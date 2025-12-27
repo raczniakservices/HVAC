@@ -1,0 +1,269 @@
+HVAC DEMO LANDING PAGE
+MASTER BUILD CHECKLIST (CURSOR SPEC)
+GOAL
+
+Create a single, ultra-high-converting HVAC landing page designed only to turn Google traffic into booked jobs.
+No branding for a specific company. This is a demo page to show HVAC owners what they are missing.
+
+Primary KPI: Form submissions + phone calls
+
+1. STRUCTURE RULES (NON-NEGOTIABLE)
+
+Single page only
+
+No navbar menus
+
+No blog
+
+No careers
+
+No galleries
+
+No outbound links
+
+One primary action at all times
+
+If something does not increase conversions, it does not exist.
+
+2. ABOVE-THE-FOLD SECTION (MOST IMPORTANT)
+Headline (large, bold, human)
+
+Must clearly state urgency + local service.
+
+Example direction (not exact copy):
+“Need HVAC Service This Weekend? Get Scheduled in Under 60 Seconds.”
+
+Rules:
+
+Must mention speed or immediacy
+
+Must imply weekend or emergency availability
+
+Must be readable on mobile without scrolling
+
+Subheadline
+
+Reassurance + location.
+
+Example direction:
+“Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls in your area.”
+
+Primary CTA (button)
+
+Text must be action-based, not generic
+
+Example: “Request Service Now” or “Get Scheduled Today”
+
+Button scrolls directly to form
+
+Button color contrasts heavily with background
+
+Secondary CTA (optional)
+
+Click-to-call button
+
+Sticky on mobile
+
+Visible phone icon
+
+3. MOBILE FIRST REQUIREMENTS
+
+Entire page designed for mobile first, desktop second
+
+Sticky bottom bar on mobile with:
+
+Call button
+
+Request Service button
+
+No text blocks longer than 3 lines on mobile
+
+Form usable with one thumb
+
+Cursor must test mobile responsiveness explicitly.
+
+4. TRUST SIGNALS (ABOVE FORM)
+
+Include these before the user is asked to submit:
+
+“Licensed & Insured”
+
+“Serving [City] & Surrounding Areas”
+
+“Emergency & Weekend Calls Available”
+
+“Fast response times”
+
+Optional:
+
+Star icons with “5-Star Rated Local HVAC Service”
+
+No fake reviews. Keep generic.
+
+5. THE FORM (CRITICAL)
+Form placement
+
+First full form appears no more than 1 scroll down
+
+Duplicate form again at bottom of page
+
+Required fields ONLY
+
+No friction. No extras.
+
+Fields:
+
+First name
+
+Phone number (required)
+
+City or ZIP
+
+Issue type (dropdown)
+
+No heat
+
+No AC
+
+System making noise
+
+Maintenance
+
+Emergency
+
+Preferred timeframe
+
+ASAP
+
+Today
+
+This weekend
+
+Flexible
+
+Submit button copy
+
+Must imply speed and response.
+
+Examples:
+
+“Get Scheduled”
+
+“Request Service”
+
+“Have a Tech Contact Me”
+
+After submit behavior
+
+Display confirmation message:
+“Thanks. A technician will contact you shortly.”
+
+This is a demo. Do not promise exact timing.
+
+6. COPY RULES (VERY IMPORTANT)
+
+No em dashes
+
+No corporate language
+
+No marketing buzzwords
+
+Read like a real human wrote it
+
+Short sentences
+
+Plain English
+
+If it sounds like AI, rewrite it.
+
+7. VISUAL STYLE
+
+Clean
+
+Neutral HVAC colors (blue, dark gray, white)
+
+One hero background image related to HVAC work
+
+No stock photos of smiling models
+
+Use real-looking HVAC imagery
+
+8. PERFORMANCE
+
+Page must load fast
+
+Minimal JavaScript
+
+No bloated libraries
+
+Optimized images
+
+Lighthouse performance score should be high
+
+9. HOSTING REQUIREMENTS
+
+Deploy on Render
+
+Public URL
+
+HTTPS enabled
+
+Simple domain or subdomain is fine
+
+Page must be stable and always accessible
+
+10. FINAL PURPOSE CHECK
+
+Before finalizing, Cursor must answer YES to all:
+
+Does this page remove friction compared to most HVAC websites?
+
+Would Google Ads traffic convert better here than a normal site?
+
+Does this page clearly outperform pages with menus, blogs, and calendars?
+
+Would an HVAC owner instantly understand the value?
+
+If any answer is no, iterate.
+
+HOW YOU USE THIS PAGE (STRATEGY CONFIRMATION)
+
+Yes, you are thinking correctly.
+
+You will use this page as:
+
+A visual proof asset in cold emails
+
+A link inside HVAC Facebook groups
+
+A comparison against their current site
+
+A credibility shortcut
+
+You are not selling a landing page.
+You are selling more booked jobs with less friction.
+
+IMPORTANT MINDSET SHIFT (READ THIS)
+
+HVAC owners do not care about:
+
+Design awards
+
+Tech stacks
+
+Fancy animations
+
+They care about:
+
+Phone ringing
+
+Jobs booked
+
+Wasted traffic
+
+This page exists to make that obvious in 5 seconds.
+
+
+
+
+
