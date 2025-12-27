@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const express = require("express");
 const Database = require("better-sqlite3");
 
@@ -16,6 +17,16 @@ const DEMO_KEY = process.env.DEMO_KEY ? String(process.env.DEMO_KEY) : "";
 const DATABASE_PATH = process.env.DATABASE_PATH
   ? String(process.env.DATABASE_PATH)
   : "./data/calls.sqlite";
+
+// Twilio webhook verification + optional call forwarding
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
+  ? String(process.env.TWILIO_AUTH_TOKEN)
+  : "";
+const TWILIO_FORWARD_TO = process.env.TWILIO_FORWARD_TO
+  ? String(process.env.TWILIO_FORWARD_TO)
+  : "";
+const TWILIO_VALIDATE_SIGNATURE =
+  String(process.env.TWILIO_VALIDATE_SIGNATURE || "1") !== "0";
 
 const resolvedDbPath = path.isAbsolute(DATABASE_PATH)
   ? DATABASE_PATH
@@ -89,6 +100,22 @@ function normalizeCallerNumber(raw) {
 
 function isValidStatus(s) {
   return s === "missed" || s === "answered";
+}
+
+function escapeXml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function isValidCallSid(s) {
+  if (typeof s !== "string") return false;
+  const trimmed = s.trim();
+  // Twilio CallSid format: CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (34 chars total)
+  return /^CA[a-f0-9]{32}$/i.test(trimmed);
 }
 
 function isAuthed(req) {
@@ -240,18 +267,182 @@ function rowToJson(row) {
     note: row.note,
     outcome: row.outcome ?? null,
     outcomeAt: row.outcomeAt ?? null,
+    callSid: row.callSid ?? null,
+    toNumber: row.toNumber ?? null,
+    twilioStatus: row.twilioStatus ?? null,
+    direction: row.direction ?? null,
     responseSeconds,
   };
 }
 
 const app = express();
+// Behind Render (or any proxy), this enables correct req.protocol from X-Forwarded-Proto.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "200kb" }));
+// Twilio webhooks POST x-www-form-urlencoded
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(__dirname));
 
 // Pages
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/demo", (req, res) => guardedPage(req, res, "demo.html"));
 app.get("/dashboard", (req, res) => guardedPage(req, res, "dashboard.html"));
+
+function computeTwilioSignature(url, params, authToken) {
+  const body = params && typeof params === "object" ? params : {};
+  const keys = Object.keys(body).sort();
+  let data = String(url || "");
+  for (const k of keys) {
+    const v = body[k];
+    // Twilio treats multi-value params as repeated keys; our usage is simple (single values).
+    data += k + (Array.isArray(v) ? v.join("") : String(v ?? ""));
+  }
+  return crypto.createHmac("sha1", authToken).update(data, "utf8").digest("base64");
+}
+
+function timingSafeEqualStr(a, b) {
+  try {
+    const ba = Buffer.from(String(a || ""), "utf8");
+    const bb = Buffer.from(String(b || ""), "utf8");
+    if (ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+function validateTwilioRequest(req) {
+  // If auth token is not set, we can't validate. Allow but log a warning.
+  if (!TWILIO_VALIDATE_SIGNATURE) return true;
+  if (!TWILIO_AUTH_TOKEN) return true;
+  const sig = req.headers["x-twilio-signature"]
+    ? String(req.headers["x-twilio-signature"])
+    : "";
+  if (!sig) return false;
+  const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  const expected = computeTwilioSignature(url, req.body, TWILIO_AUTH_TOKEN);
+  return timingSafeEqualStr(sig, expected);
+}
+
+function requireTwilioAuth(req, res, next) {
+  if (!TWILIO_VALIDATE_SIGNATURE) return next();
+  if (!TWILIO_AUTH_TOKEN) {
+    if (!requireTwilioAuth._warned) {
+      // eslint-disable-next-line no-console
+      console.log("⚠️  TWILIO_AUTH_TOKEN not set; skipping Twilio signature verification.");
+      requireTwilioAuth._warned = true;
+    }
+    return next();
+  }
+  if (validateTwilioRequest(req)) return next();
+  return res.status(403).type("text/plain").send("Forbidden");
+}
+
+function normalizeTwilioCallStatus(raw) {
+  const s = String(raw || "").toLowerCase().trim();
+  // Treat these as answered.
+  if (s === "in-progress" || s === "completed") return "answered";
+  // Everything else is a missed/unhandled outcome for our visibility demo.
+  return "missed";
+}
+
+function upsertTwilioEvent({ callSid, from, to, twilioStatus, direction }) {
+  const now = new Date().toISOString();
+  const callerNumber = normalizeCallerNumber(from);
+  const status = normalizeTwilioCallStatus(twilioStatus);
+
+  if (callSid && isValidCallSid(callSid)) {
+    const existing = db
+      .prepare("SELECT * FROM CallEvent WHERE callSid = ?")
+      .get(callSid);
+
+    if (existing) {
+      db.prepare(
+        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction) WHERE callSid = ?"
+      ).run(callerNumber || null, status, to || null, twilioStatus || null, direction || null, callSid);
+      return;
+    }
+
+    db.prepare(
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?)"
+    ).run(
+      now,
+      callerNumber || "+10000000000",
+      status,
+      callSid,
+      to || null,
+      twilioStatus || null,
+      direction || null
+    );
+    return;
+  }
+
+  // Fallback if CallSid missing/invalid: insert as a best-effort event.
+  db.prepare(
+    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?)"
+  ).run(now, callerNumber || "+10000000000", status, to || null, twilioStatus || null, direction || null);
+}
+
+function twiml(xmlInner) {
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${xmlInner || ""}</Response>`;
+}
+
+// Twilio: voice webhook (A call comes in)
+app.post("/twilio/voice", requireTwilioAuth, (req, res) => {
+  const callSid = req.body?.CallSid ? String(req.body.CallSid).trim() : "";
+  const from = req.body?.From ? String(req.body.From).trim() : "";
+  const to = req.body?.To ? String(req.body.To).trim() : "";
+  const twilioStatus = req.body?.CallStatus ? String(req.body.CallStatus).trim() : "";
+  const direction = req.body?.Direction ? String(req.body.Direction).trim() : "";
+
+  try {
+    upsertTwilioEvent({ callSid, from, to, twilioStatus, direction });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("Twilio voice webhook DB write failed:", e);
+  }
+
+  // If you want a “real” demo: forward the call to a real phone number.
+  if (TWILIO_FORWARD_TO) {
+    // Provide a status callback so we can update answered/missed based on final status.
+    const statusCb = `${req.protocol}://${req.get("host")}/twilio/status`;
+    return res
+      .type("text/xml")
+      .send(
+        twiml(
+          `<Dial action="${escapeXml(statusCb)}" method="POST" statusCallback="${escapeXml(
+            statusCb
+          )}" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${escapeXml(
+            TWILIO_FORWARD_TO
+          )}</Dial>`
+        )
+      );
+  }
+
+  // Default: speak a short message and hang up (useful when testing without forwarding).
+  return res
+    .type("text/xml")
+    .send(twiml("<Say>Thanks. This number is configured for a demo. Goodbye.</Say><Hangup/>"));
+});
+
+// Twilio: call status callback (Call status changes)
+app.post("/twilio/status", requireTwilioAuth, (req, res) => {
+  const callSid = req.body?.CallSid ? String(req.body.CallSid).trim() : "";
+  const from = req.body?.From ? String(req.body.From).trim() : "";
+  const to = req.body?.To ? String(req.body.To).trim() : "";
+  const twilioStatus =
+    (req.body?.CallStatus ? String(req.body.CallStatus) : "") ||
+    (req.body?.DialCallStatus ? String(req.body.DialCallStatus) : "");
+  const direction = req.body?.Direction ? String(req.body.Direction).trim() : "";
+
+  try {
+    upsertTwilioEvent({ callSid, from, to, twilioStatus, direction });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("Twilio status webhook DB write failed:", e);
+  }
+  return res.status(204).end();
+});
 
 // API: create event (webhook simulator)
 app.post("/api/webhooks/call", requireDemoAuth, (req, res) => {
@@ -405,6 +596,12 @@ app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(
       "⚠️  DEMO_KEY is not set. /demo and /dashboard will be disabled until you set it."
+    );
+  }
+  if (!TWILIO_AUTH_TOKEN && TWILIO_VALIDATE_SIGNATURE) {
+    // eslint-disable-next-line no-console
+    console.log(
+      "⚠️  TWILIO_AUTH_TOKEN is not set. /twilio/* webhooks will NOT be signature-verified."
     );
   }
 });
