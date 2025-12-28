@@ -461,7 +461,7 @@ app.post("/twilio/voice", requireTwilioAuth, (req, res) => {
   // Default: speak a short message and hang up (useful when testing without forwarding).
   return res
     .type("text/xml")
-    .send(twiml("<Say>Thanks. This number is configured for a demo. Goodbye.</Say><Hangup/>"));
+    .send(twiml("<Say>Thanks for calling. Goodbye.</Say><Hangup/>"));
 });
 
 // Twilio: call status callback (Call status changes)
