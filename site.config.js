@@ -9,11 +9,9 @@ export const SITE_CONFIG = {
   serviceAreas: ["Baltimore", "Towson", "Catonsville", "Parkville", "Dundalk", "Surrounding areas"],
 
   // Branding images (add files under ./assets/brand/)
-  // NOTE: currently pointing at the filenames that were uploaded to /assets.
-  // If you rename/move them into /assets/brand (recommended), update these paths.
-  logoUrl: "./assets/blue ridge .jpg",
-  ratingBannerUrl: "./assets/branding2.jpg",
-  satisfactionSealUrl: "./assets/branding1.jpg",
+  logoUrl: "./assets/brand/logo.jpg",
+  ratingBannerUrl: "./assets/brand/rating-banner.jpg",
+  satisfactionSealUrl: "./assets/brand/satisfaction-seal.jpg",
 
   // Optional hero / about photos (leave blank if not used)
   heroImageUrl: "",

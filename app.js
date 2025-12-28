@@ -69,6 +69,19 @@ function applyConfigToDom() {
     if (el.getAttribute("data-hide-empty") === "1") el.hidden = !src;
   });
 
+  // About media behavior: if we have a seal but no about photo, show a "badge card" instead of an empty image box.
+  try {
+    const aboutMedia = document.querySelector(".about__media");
+    const hasAbout = String(SITE_CONFIG.aboutImageUrl || "").trim().length > 0;
+    const hasSeal = String(SITE_CONFIG.satisfactionSealUrl || "").trim().length > 0;
+    if (aboutMedia) {
+      aboutMedia.classList.toggle("about__media--badge", !hasAbout && hasSeal);
+      aboutMedia.hidden = !hasAbout && !hasSeal;
+    }
+  } catch {
+    // ignore
+  }
+
   // Phone bindings
   document.querySelectorAll("[data-bind-tel]").forEach((el) => {
     const telKey = el.getAttribute("data-bind-tel") || "phoneTel";
