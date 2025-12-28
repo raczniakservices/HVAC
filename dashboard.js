@@ -74,7 +74,7 @@ function formatDuration(seconds) {
 }
 
 const OUTCOME_OPTIONS = [
-  { value: "", label: "(unset)", displayLabel: "—", color: "#94a3b8" },
+  { value: "", label: "Set result…", displayLabel: "Set result…", color: "#94a3b8" },
   { value: "booked", label: "Booked", displayLabel: "✅ Booked", color: "#16a34a" },
   { value: "reached_no_booking", label: "Contacted (no booking)", displayLabel: "📞 Contacted", color: "#f59e0b" },
   { value: "no_answer", label: "No answer", displayLabel: "❌ No answer", color: "#94a3b8" },
@@ -339,17 +339,15 @@ function renderRows(events) {
     const msg = hiddenOnlyDemo
       ? `No rows match the current filter. Uncheck “Hide Demo rows” to view demo data.`
       : `No events yet. Use the Simulator to create one.`;
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = events
     .map((ev) => {
       const isMissed = ev.status === "missed";
-      const canFollow = isMissed && !ev.followedUp;
-      const followText = ev.followedUp
-        ? `Yes <span class="muted">(${escapeHtml(formatTime(ev.followedUpAt))})</span>`
-        : "No";
+      // Follow-up is now driven by selecting a Result (Outcome).
+      // We still compute responseSeconds from followedUpAt in the backend for metrics.
 
       const rs = computeResponseSeconds(ev);
       const responseText = typeof rs === "number" ? formatDuration(rs) : "—";
@@ -437,17 +435,11 @@ function renderRows(events) {
             </span>
           </td>
           <td>${escapeHtml(responseText)}</td>
-          <td style="font-size:12px;">${followText}</td>
           <td style="overflow:visible;">
             ${outcomeControlsHtml}
           </td>
           <td style="text-align:right; overflow:visible;">
             <div style="display:inline-flex; gap:8px; justify-content:flex-end; align-items:center;">
-              ${
-                canFollow
-                  ? `<button class="btn btn--secondary btn--sm js-follow" type="button" title="Mark Followed Up" style="width:40px; height:40px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0;">✓</button>`
-                  : ``
-              }
               <button class="btn btn--secondary btn--sm js-delete" type="button" title="Delete" aria-label="Delete" style="width:40px; height:40px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:18px; opacity:0.6; flex-shrink:0;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">🗑</button>
             </div>
           </td>
@@ -568,52 +560,6 @@ async function main() {
       if (!id) return;
       editingOutcomeIds.delete(String(id));
       renderRows(applyDemoFilter(eventsCache));
-      return;
-    }
-
-    const followBtn = e.target.closest(".js-follow");
-    if (followBtn) {
-      const tr = followBtn.closest("tr");
-      const id = tr?.dataset?.id;
-      if (!id) return;
-
-      console.log("Follow up clicked:", { id });
-
-      pauseAutoRefresh(3000);
-      mutationEpoch += 1;
-      mutatingIds.add(String(id));
-
-      followBtn.disabled = true;
-      try {
-        const nowIso = new Date().toISOString();
-        upsertEvent({
-          id,
-          followedUp: true,
-          followedUpAt: nowIso,
-        });
-        {
-          const filtered = applyDemoFilter(eventsCache);
-          renderRows(filtered);
-          setSummary(filtered);
-        }
-
-        const updated = await followUp(id);
-        upsertEvent(updated);
-        mutatingIds.delete(String(id));
-        {
-          const filtered = applyDemoFilter(eventsCache);
-          renderRows(filtered);
-          setSummary(filtered);
-        }
-        showToast("Marked followed up", "ok");
-      } catch (err) {
-        mutatingIds.delete(String(id));
-        console.error("Follow-up failed", err);
-        showToast(err.message || "Failed to update", "bad");
-        await loadCalls({ silent: true, force: true });
-      } finally {
-        followBtn.disabled = false;
-      }
       return;
     }
 

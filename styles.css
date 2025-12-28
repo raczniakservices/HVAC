@@ -771,16 +771,15 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   position:sticky;
   top:0;
 }
-/* Dashboard table column sizing (9 columns after adding "Call length") */
-.table thead th:nth-child(1) { width: 14%; }  /* Time */
-.table thead th:nth-child(2) { width: 14%; }  /* Caller */
-.table thead th:nth-child(3) { width: 110px; }/* Status */
-.table thead th:nth-child(4) { width: 105px; }/* Call length */
-.table thead th:nth-child(5) { width: 110px; }/* Type */
-.table thead th:nth-child(6) { width: 110px; }/* Response time */
-.table thead th:nth-child(7) { width: 95px; } /* Followed up */
-.table thead th:nth-child(8) { width: 190px; }/* Outcome */
-.table thead th:nth-child(9) { width: 95px; } /* Actions */
+/* Dashboard table column sizing (8 columns) */
+.table thead th:nth-child(1) { width: 14%; }   /* Time */
+.table thead th:nth-child(2) { width: 18%; }   /* Caller (+details) */
+.table thead th:nth-child(3) { width: 120px; } /* Status */
+.table thead th:nth-child(4) { width: 105px; } /* Call length */
+.table thead th:nth-child(5) { width: 110px; } /* Type */
+.table thead th:nth-child(6) { width: 110px; } /* Response time */
+.table thead th:nth-child(7) { width: 240px; } /* Result */
+.table thead th:nth-child(8) { width: 95px; }  /* Actions */
 .table tbody td{
   padding:12px 10px;
   border-bottom:1px solid rgba(226,232,240,.7);
@@ -800,9 +799,6 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .table tbody td:nth-child(6),
 .table tbody td:nth-child(7){
   word-break:normal;
-}
-.table tbody td:nth-child(7){
-  white-space:nowrap;
 }
 .table tbody td:nth-child(7),
 .table tbody td:nth-child(8){
