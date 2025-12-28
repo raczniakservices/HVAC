@@ -51,6 +51,8 @@ Set for the Twilio number:
 - **Answered vs missed logic**:
   - If forwarding is **not enabled**, calls are treated as **missed** (Twilio “completed” just means TwiML completed).
   - If forwarding **is enabled**, we use `DialCallStatus` from Twilio status callbacks.
+- **Call length (duration)**:
+  - Dashboard “Call length” uses `DialCallDuration` when forwarding, otherwise `CallDuration` (both reported by Twilio on status callbacks).
 - **Redirect loop fix for demo key entry**:
   - Prevents looping when a bad `?key=` is present.
   - Escape hatch: `/dashboard?reset=1` clears stored key + cookie to re-enter.

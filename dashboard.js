@@ -336,7 +336,7 @@ function renderRows(events) {
     const msg = hiddenOnlyDemo
       ? `No rows match the current filter. Uncheck “Hide Demo rows” to view demo data.`
       : `No events yet. Use the Simulator to create one.`;
-    tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">${escapeHtml(msg)}</td></tr>`;
     return;
   }
 
@@ -352,6 +352,14 @@ function renderRows(events) {
       const responseText = typeof rs === "number" ? formatDuration(rs) : "—";
 
       const sourceInfo = formatSource(ev.source);
+
+      const callLenSec =
+        typeof ev?.dialCallDurationSec === "number"
+          ? ev.dialCallDurationSec
+          : typeof ev?.callDurationSec === "number"
+            ? ev.callDurationSec
+            : null;
+      const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
       const currentOutcome = ev.outcome ? String(ev.outcome) : "";
       const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === currentOutcome) || OUTCOME_OPTIONS[0];
@@ -404,6 +412,7 @@ function renderRows(events) {
           <td>${escapeHtml(formatTime(ev.createdAt))}</td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(ev.callerNumber)}</td>
           <td><span class="status-badge status-badge--${escapeHtml(ev.status)}">${escapeHtml(ev.status)}</span></td>
+          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
               ${sourceInfo.label}

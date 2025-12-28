@@ -313,6 +313,12 @@ function rowToJson(row) {
     toNumber: row.toNumber ?? null,
     twilioStatus: row.twilioStatus ?? null,
     direction: row.direction ?? null,
+    callDurationSec:
+      typeof row.callDurationSec === "number" ? row.callDurationSec : row.callDurationSec ?? null,
+    dialCallDurationSec:
+      typeof row.dialCallDurationSec === "number"
+        ? row.dialCallDurationSec
+        : row.dialCallDurationSec ?? null,
     responseSeconds,
   };
 }
@@ -425,6 +431,8 @@ function upsertTwilioEvent({
   callStatus,
   dialCallStatus,
   direction,
+  callDurationSec,
+  dialCallDurationSec,
 }) {
   const now = new Date().toISOString();
   const callerNumber = normalizeCallerNumber(from);
@@ -442,13 +450,22 @@ function upsertTwilioEvent({
 
     if (existing) {
       db.prepare(
-        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction) WHERE callSid = ?"
-      ).run(callerNumber || null, status, to || null, twilioStatus || null, direction || null, callSid);
+        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction), callDurationSec = COALESCE(?, callDurationSec), dialCallDurationSec = COALESCE(?, dialCallDurationSec) WHERE callSid = ?"
+      ).run(
+        callerNumber || null,
+        status,
+        to || null,
+        twilioStatus || null,
+        direction || null,
+        callDurationSec ?? null,
+        dialCallDurationSec ?? null,
+        callSid
+      );
       return;
     }
 
     db.prepare(
-      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?)"
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?)"
     ).run(
       now,
       callerNumber || "+10000000000",
@@ -456,19 +473,39 @@ function upsertTwilioEvent({
       callSid,
       to || null,
       twilioStatus || null,
-      direction || null
+      direction || null,
+      callDurationSec ?? null,
+      dialCallDurationSec ?? null
     );
     return;
   }
 
   // Fallback if CallSid missing/invalid: insert as a best-effort event.
   db.prepare(
-    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?)"
-  ).run(now, callerNumber || "+10000000000", status, to || null, twilioStatus || null, direction || null);
+    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?)"
+  ).run(
+    now,
+    callerNumber || "+10000000000",
+    status,
+    to || null,
+    twilioStatus || null,
+    direction || null,
+    callDurationSec ?? null,
+    dialCallDurationSec ?? null
+  );
 }
 
 function twiml(xmlInner) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${xmlInner || ""}</Response>`;
+}
+
+function parseTwilioSeconds(val) {
+  if (val === null || typeof val === "undefined") return null;
+  const n = Number(String(val).trim());
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  if (i < 0) return null;
+  return i;
 }
 
 // Twilio: outbound test TwiML (for one-phone testing via Twilio API)
@@ -588,6 +625,8 @@ app.post("/twilio/voice", requireTwilioAuth, (req, res) => {
       callStatus,
       dialCallStatus: "",
       direction,
+      callDurationSec: parseTwilioSeconds(req.body?.CallDuration),
+      dialCallDurationSec: parseTwilioSeconds(req.body?.DialCallDuration),
     });
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -650,6 +689,8 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
       callStatus,
       dialCallStatus,
       direction,
+      callDurationSec: parseTwilioSeconds(req.body?.CallDuration),
+      dialCallDurationSec: parseTwilioSeconds(req.body?.DialCallDuration),
     });
   } catch (e) {
     // eslint-disable-next-line no-console
