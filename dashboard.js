@@ -131,6 +131,22 @@ function filenameTimestamp(d = new Date()) {
   return `${yyyy}-${mm}-${dd}_${hh}${min}`;
 }
 
+function formatCallerForExcel(raw) {
+  if (raw === null || raw === undefined) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+
+  // If it's basically a phone number, force Excel to treat it as text to avoid 1.44E+10 formatting.
+  // Using a formula returning a string is the most reliable: ="+14435551234"
+  const digits = s.replace(/[^\d+]/g, "");
+  if (/^\+?\d{7,20}$/.test(digits)) {
+    const e164ish = digits.startsWith("+") ? digits : `+${digits}`;
+    return `="${e164ish}"`;
+  }
+
+  return s;
+}
+
 const OUTCOME_OPTIONS = [
   { value: "", label: "Set result…", displayLabel: "Set result…", color: "#94a3b8" },
   { value: "booked", label: "Booked", displayLabel: "✅ Booked", color: "#16a34a" },
@@ -359,7 +375,7 @@ function exportVisibleRowsToCsv() {
   const headers = [
     { label: "Created At (ISO)", get: (ev) => ev?.createdAt || "" },
     { label: "Created At (Local)", get: (ev) => formatLocalDateTime(ev?.createdAt) },
-    { label: "Caller", get: (ev) => ev?.callerNumber || "" },
+    { label: "Caller", get: (ev) => formatCallerForExcel(ev?.callerNumber) },
     { label: "Details / Note", get: (ev) => ev?.note || "" },
     { label: "Status", get: (ev) => getDisplayStatus(ev).statusLabel || "" },
     { label: "Call Length (sec)", get: (ev) => {
@@ -391,10 +407,10 @@ function exportVisibleRowsToCsv() {
     { label: "Source (raw)", get: (ev) => ev?.source || "" },
     { label: "Status (raw)", get: (ev) => ev?.status || "" },
     { label: "Outcome (raw)", get: (ev) => ev?.outcome || "" },
-    { label: "ID", get: (ev) => ev?.id || "" },
   ];
 
-  const csv = buildCsv(visible, headers);
+  // Add UTF-8 BOM so Excel reliably opens as UTF-8 (helps with symbols like "≤").
+  const csv = "\ufeff" + buildCsv(visible, headers);
   const filename = `opportunity-visibility_${filenameTimestamp(new Date())}.csv`;
   downloadTextFile({ filename, text: csv, mimeType: "text/csv;charset=utf-8" });
   showToast(`Exported ${visible.length} row(s)`, "ok");
