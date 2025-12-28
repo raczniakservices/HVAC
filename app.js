@@ -313,9 +313,9 @@ function applyConfigToDom() {
     // the source of truth can "stick" on some browsers. We track activeStepIdx explicitly.
     setActiveStep(idx);
 
-    // If a smooth scroll is already happening, jump immediately to prevent getting stuck.
-    const useBehavior =
-      behavior || (prefersReducedMotion || isProgrammaticScroll ? "auto" : "smooth");
+    // For user-driven navigation (buttons/dots), we prefer instant jumps to avoid "stuck"
+    // behavior when the browser is mid-snap/mid-smooth-scroll. Auto-advance can still be smooth.
+    const useBehavior = behavior || (prefersReducedMotion ? "auto" : "smooth");
 
     isProgrammaticScroll = true;
     if (programmaticT) window.clearTimeout(programmaticT);
@@ -324,7 +324,23 @@ function applyConfigToDom() {
       programmaticT = null;
     }, useBehavior === "smooth" ? 420 : 80);
 
-    track.scrollTo({ left: step.left, behavior: useBehavior });
+    const targetLeft = step.left;
+    track.scrollTo({ left: targetLeft, behavior: useBehavior });
+
+    // Fallback: if the browser doesn't move (or gets stuck mid-snap), force the position.
+    // This is intentionally conservative and only runs shortly after navigation.
+    window.setTimeout(() => {
+      if (!track) return;
+      const tol = 2;
+      if (Math.abs(track.scrollLeft - targetLeft) > tol) {
+        try {
+          // Force jump; scroll-snap will still clamp as needed.
+          track.scrollLeft = targetLeft;
+        } catch {
+          // ignore
+        }
+      }
+    }, useBehavior === "smooth" ? 140 : 40);
   }
 
   let autoT = null;
@@ -357,7 +373,11 @@ function applyConfigToDom() {
         dot.type = "button";
         const humanStep = i + 1;
         dot.setAttribute("aria-label", `Go to testimonials page ${humanStep} of ${steps.length}`);
-        dot.addEventListener("click", () => scrollToStep(i));
+        dot.addEventListener("click", () => {
+          stopAuto();
+          scrollToStep(i, { behavior: "auto" });
+          window.setTimeout(startAuto, 8000);
+        });
         dots.appendChild(dot);
       });
 
@@ -383,15 +403,20 @@ function applyConfigToDom() {
 
     if (btnPrev)
       btnPrev.addEventListener("click", () => {
+        stopAuto();
         const i = activeStepIdx;
         const prev = (i - 1 + steps.length) % steps.length;
-        scrollToStep(prev);
+        scrollToStep(prev, { behavior: "auto" });
+        // Restart auto after a moment so repeated clicks don't fight it.
+        window.setTimeout(startAuto, 8000);
       });
     if (btnNext)
       btnNext.addEventListener("click", () => {
+        stopAuto();
         const i = activeStepIdx;
         const next = (i + 1) % steps.length;
-        scrollToStep(next);
+        scrollToStep(next, { behavior: "auto" });
+        window.setTimeout(startAuto, 8000);
       });
 
     // Keep steps in sync with responsive layout changes.
