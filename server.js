@@ -22,6 +22,10 @@ const DATABASE_PATH = process.env.DATABASE_PATH
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
   ? String(process.env.TWILIO_AUTH_TOKEN)
   : "";
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
+  ? String(process.env.TWILIO_ACCOUNT_SID)
+  : "";
+const TWILIO_NUMBER = process.env.TWILIO_NUMBER ? String(process.env.TWILIO_NUMBER) : "";
 const TWILIO_FORWARD_TO = process.env.TWILIO_FORWARD_TO
   ? String(process.env.TWILIO_FORWARD_TO)
   : "";
@@ -336,6 +340,8 @@ app.get("/_health", (req, res) => {
     twilio: {
       validateSignature: !!TWILIO_VALIDATE_SIGNATURE,
       hasAuthToken: !!TWILIO_AUTH_TOKEN,
+      hasAccountSid: !!TWILIO_ACCOUNT_SID,
+      hasNumber: !!TWILIO_NUMBER,
       forwardEnabled: !!TWILIO_FORWARD_TO,
     },
   });
@@ -464,6 +470,105 @@ function upsertTwilioEvent({
 function twiml(xmlInner) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${xmlInner || ""}</Response>`;
 }
+
+// Twilio: outbound test TwiML (for one-phone testing via Twilio API)
+app.post("/twilio/outbound", requireTwilioAuth, (req, res) => {
+  return res
+    .type("text/xml")
+    .send(
+      twiml(
+        "<Say>Thanks for calling. Please hold while we connect you.</Say><Pause length=\"10\"/><Hangup/>"
+      )
+    );
+});
+
+function canUseTwilioApi() {
+  return !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_NUMBER);
+}
+
+async function createTwilioTestCall({ toNumber, statusCallbackUrl, twimlUrl }) {
+  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
+  const body = new URLSearchParams();
+  body.set("From", TWILIO_NUMBER);
+  body.set("To", toNumber);
+  body.set("Url", twimlUrl);
+  body.set("Method", "POST");
+  body.set("StatusCallback", statusCallbackUrl);
+  body.set("StatusCallbackMethod", "POST");
+  body.set("StatusCallbackEvent", "initiated ringing answered completed");
+
+  const resp = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Calls.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }
+  );
+
+  const text = await resp.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text };
+  }
+  if (!resp.ok) {
+    const msg = json?.message || json?.error_message || `Twilio API error (${resp.status})`;
+    const e = new Error(msg);
+    e.status = resp.status;
+    e.details = json;
+    throw e;
+  }
+  return json;
+}
+
+// One-phone testing: trigger Twilio to call your phone from the Twilio number.
+// This simulates a "customer call event pipeline" without needing a second device.
+app.post("/api/twilio/test-call", requireDemoAuth, async (req, res) => {
+  if (!canUseTwilioApi()) {
+    return res.status(400).json({
+      error: "Twilio test-call not configured",
+      message:
+        "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_NUMBER to use /api/twilio/test-call.",
+    });
+  }
+
+  const toNumber = req.body?.to ? String(req.body.to).trim() : "";
+  if (!isValidCallerNumber(toNumber)) {
+    return res.status(400).json({
+      error: "Invalid to",
+      message: "Body must include { to: '+1XXXXXXXXXX' } (digits and optional leading +).",
+    });
+  }
+
+  const base = `${req.protocol}://${req.get("host")}`;
+  const statusCb = `${base}/twilio/status`;
+  const twimlUrl = `${base}/twilio/outbound`;
+
+  try {
+    const result = await createTwilioTestCall({
+      toNumber,
+      statusCallbackUrl: statusCb,
+      twimlUrl,
+    });
+    return res.json({
+      ok: true,
+      callSid: result?.sid || null,
+      status: result?.status || null,
+      to: result?.to || null,
+      from: result?.from || null,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      error: "Failed to create test call",
+      message: e?.message || "Unknown error",
+    });
+  }
+});
 
 // Twilio: voice webhook (A call comes in)
 app.post("/twilio/voice", requireTwilioAuth, (req, res) => {

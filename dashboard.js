@@ -402,7 +402,7 @@ function renderRows(events) {
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
           <td>${escapeHtml(formatTime(ev.createdAt))}</td>
-          <td style="font-family:ui-monospace,monospace; font-size:12px;">${escapeHtml(ev.callerNumber)}</td>
+          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(ev.callerNumber)}</td>
           <td><span class="status-badge status-badge--${escapeHtml(ev.status)}">${escapeHtml(ev.status)}</span></td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
