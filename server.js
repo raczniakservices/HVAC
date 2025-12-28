@@ -377,18 +377,43 @@ function requireTwilioAuth(req, res, next) {
   return res.status(403).type("text/plain").send("Forbidden");
 }
 
-function normalizeTwilioCallStatus(raw) {
-  const s = String(raw || "").toLowerCase().trim();
-  // Treat these as answered.
-  if (s === "in-progress" || s === "completed") return "answered";
-  // Everything else is a missed/unhandled outcome for our visibility demo.
+function normalizeTwilioCallStatus({ callStatus, dialCallStatus, hasForwarding }) {
+  const cs = String(callStatus || "").toLowerCase().trim();
+  const dcs = String(dialCallStatus || "").toLowerCase().trim();
+
+  // If we are NOT forwarding, Twilio "completed" just means it finished our TwiML.
+  // That does NOT indicate a real human answered, so treat as missed/unhandled.
+  if (!hasForwarding) return "missed";
+
+  // When forwarding via <Dial>, trust DialCallStatus if present.
+  // Twilio DialCallStatus values: completed | busy | no-answer | failed | canceled
+  if (dcs) {
+    if (dcs === "completed") return "answered";
+    return "missed";
+  }
+
+  // Fallback: interpret call status.
+  // "in-progress" implies connected; treat as answered. "completed" is ambiguous; treat as missed.
+  if (cs === "in-progress") return "answered";
   return "missed";
 }
 
-function upsertTwilioEvent({ callSid, from, to, twilioStatus, direction }) {
+function upsertTwilioEvent({
+  callSid,
+  from,
+  to,
+  callStatus,
+  dialCallStatus,
+  direction,
+}) {
   const now = new Date().toISOString();
   const callerNumber = normalizeCallerNumber(from);
-  const status = normalizeTwilioCallStatus(twilioStatus);
+  const status = normalizeTwilioCallStatus({
+    callStatus,
+    dialCallStatus,
+    hasForwarding: !!TWILIO_FORWARD_TO,
+  });
+  const twilioStatus = String(dialCallStatus || callStatus || "").trim();
 
   if (callSid && isValidCallSid(callSid)) {
     const existing = db
@@ -431,11 +456,20 @@ app.post("/twilio/voice", requireTwilioAuth, (req, res) => {
   const callSid = req.body?.CallSid ? String(req.body.CallSid).trim() : "";
   const from = req.body?.From ? String(req.body.From).trim() : "";
   const to = req.body?.To ? String(req.body.To).trim() : "";
-  const twilioStatus = req.body?.CallStatus ? String(req.body.CallStatus).trim() : "";
+  const callStatus = req.body?.CallStatus ? String(req.body.CallStatus).trim() : "";
   const direction = req.body?.Direction ? String(req.body.Direction).trim() : "";
 
   try {
-    upsertTwilioEvent({ callSid, from, to, twilioStatus, direction });
+    // Initial voice webhook doesn't tell us if a human answered a forwarded call yet.
+    // We'll refine on /twilio/status if forwarding is enabled.
+    upsertTwilioEvent({
+      callSid,
+      from,
+      to,
+      callStatus,
+      dialCallStatus: "",
+      direction,
+    });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("Twilio voice webhook DB write failed:", e);
@@ -469,13 +503,21 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
   const callSid = req.body?.CallSid ? String(req.body.CallSid).trim() : "";
   const from = req.body?.From ? String(req.body.From).trim() : "";
   const to = req.body?.To ? String(req.body.To).trim() : "";
-  const twilioStatus =
-    (req.body?.CallStatus ? String(req.body.CallStatus) : "") ||
-    (req.body?.DialCallStatus ? String(req.body.DialCallStatus) : "");
+  const callStatus = req.body?.CallStatus ? String(req.body.CallStatus).trim() : "";
+  const dialCallStatus = req.body?.DialCallStatus
+    ? String(req.body.DialCallStatus).trim()
+    : "";
   const direction = req.body?.Direction ? String(req.body.Direction).trim() : "";
 
   try {
-    upsertTwilioEvent({ callSid, from, to, twilioStatus, direction });
+    upsertTwilioEvent({
+      callSid,
+      from,
+      to,
+      callStatus,
+      dialCallStatus,
+      direction,
+    });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn("Twilio status webhook DB write failed:", e);

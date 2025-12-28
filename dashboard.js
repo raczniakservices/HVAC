@@ -57,7 +57,7 @@ function formatSource(source) {
     simulator: { label: "Demo", color: "#6366f1" },
     landing_call_click: { label: "Call click", color: "#8b5cf6" },
     landing_form: { label: "Form submit", color: "#0ea5e9" },
-    twilio: { label: "Twilio", color: "#10b981" },
+    twilio: { label: "Inbound call", color: "#10b981" },
   };
   return sourceMap[source] || { label: source || "Unknown", color: "#94a3b8" };
 }
