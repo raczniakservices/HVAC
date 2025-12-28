@@ -495,6 +495,9 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   height:auto;
   display:block;
 }
+.about__img[hidden]{
+  display:none !important;
+}
 .about__seal{
   position:absolute;
   left:12px;

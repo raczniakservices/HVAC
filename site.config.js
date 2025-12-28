@@ -9,11 +9,15 @@ export const SITE_CONFIG = {
   serviceAreas: ["Baltimore", "Towson", "Catonsville", "Parkville", "Dundalk", "Surrounding areas"],
 
   // Branding images (add files under ./assets/brand/)
-  logoUrl: "./assets/brand/logo.png",
-  heroImageUrl: "./assets/brand/hero.jpg",
-  aboutImageUrl: "./assets/brand/about.jpg",
-  ratingBannerUrl: "./assets/brand/rating-banner.png",
-  satisfactionSealUrl: "./assets/brand/satisfaction-seal.png",
+  // NOTE: currently pointing at the filenames that were uploaded to /assets.
+  // If you rename/move them into /assets/brand (recommended), update these paths.
+  logoUrl: "./assets/blue ridge .jpg",
+  ratingBannerUrl: "./assets/branding2.jpg",
+  satisfactionSealUrl: "./assets/branding1.jpg",
+
+  // Optional hero / about photos (leave blank if not used)
+  heroImageUrl: "",
+  aboutImageUrl: "",
 
   services: [
     { title: "AC Repair", desc: "Restore cooling fast with clear options and upfront approval.", iconUrl: "./assets/brand/icon-ac.png", iconAlt: "AC" },
@@ -64,8 +68,8 @@ export const SITE_CONFIG = {
     accentColor: "#083a9a",
   },
 
-  enableHeroImage: true,
-  heroBackgroundImageUrl: "./assets/brand/hero.jpg",
+  enableHeroImage: false,
+  heroBackgroundImageUrl: "",
 };
 
 
