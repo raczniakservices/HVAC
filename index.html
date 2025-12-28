@@ -142,33 +142,39 @@
                   </div>
 
                   <div class="field">
-                    <label for="issue">Issue type</label>
+                    <label for="issue">What do you need help with?</label>
                     <select id="issue" name="issue" required>
-                      <option value="">Select an issue</option>
+                      <option value="">Select one…</option>
                       <option>No heat</option>
                       <option>No AC</option>
-                      <option>System making noise</option>
-                      <option>Maintenance</option>
-                      <option>Emergency</option>
+                      <option>System won’t turn on</option>
+                      <option>Strange noise / burning smell</option>
+                      <option>Water leak</option>
+                      <option>Weak airflow / uneven temps</option>
+                      <option>Maintenance / tune-up</option>
+                      <option>Thermostat issue</option>
+                      <option>Other</option>
                     </select>
                     <p class="error" data-error-for="issue" aria-live="polite"></p>
                   </div>
 
                   <div class="field field--full">
-                    <label for="timeframe">Preferred timeframe</label>
+                    <label for="timeframe">When do you need service?</label>
                     <select id="timeframe" name="timeframe" required>
-                      <option value="">Select a timeframe</option>
-                      <option>ASAP</option>
+                      <option value="">Select one…</option>
+                      <option>ASAP (next 2–4 hours)</option>
                       <option>Today</option>
-                      <option>This weekend</option>
+                      <option>Tomorrow</option>
+                      <option>This week</option>
+                      <option>Weekend</option>
                       <option>Flexible</option>
                     </select>
                     <p class="error" data-error-for="timeframe" aria-live="polite"></p>
                   </div>
                 </div>
 
-                <button class="btn btn--primary btn--block" type="submit">Have a Tech Contact Me</button>
-                <p class="form-privacy">No spam. We use this only to confirm your request quickly.</p>
+                <button class="btn btn--primary btn--block" type="submit">Request service</button>
+                <p class="form-privacy">No spam. We use this only to confirm availability and next steps.</p>
 
                 <p class="form-footnote">
                   Prefer a faster response? Call:
@@ -178,7 +184,7 @@
                 <div class="form-success" id="formSuccess" hidden>
                   <div class="form-success__title">Thanks.</div>
                   <div class="form-success__body">
-                    A technician will contact you shortly.
+                    We’ll reach out shortly to confirm availability and next steps.
                   </div>
                 </div>
               </form>

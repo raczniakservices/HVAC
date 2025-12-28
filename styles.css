@@ -97,9 +97,10 @@ button:hover,a.btn:hover{transform:translateY(-1px);opacity:1}
   text-decoration:none;
 }
 .brand__mark{
-  height:36px;
+  /* Fluid logo sizing so it scales smoothly across screen sizes */
+  height:clamp(44px, 4.5vw, 60px);
   width:auto;
-  max-width:220px;
+  max-width:clamp(180px, 22vw, 320px);
   display:block;
   object-fit:contain;
 }
@@ -805,7 +806,6 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   .footer__grid{grid-template-columns:1fr}
   body{padding-bottom:0} /* handled at <=768 */
   .about__grid{grid-template-columns:1fr}
-  .brand__mark{max-width:170px; height:34px}
 }
 
 @media (min-width: 981px) and (max-width: 1120px){
