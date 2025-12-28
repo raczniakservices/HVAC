@@ -59,6 +59,16 @@ function applyConfigToDom() {
     }
   });
 
+  // Image src bindings (+ optional hide when blank)
+  document.querySelectorAll("[data-bind-src]").forEach((el) => {
+    const key = el.getAttribute("data-bind-src");
+    if (!key) return;
+    const val = SITE_CONFIG[key];
+    const src = val == null ? "" : String(val).trim();
+    if (el.tagName === "IMG") el.setAttribute("src", src);
+    if (el.getAttribute("data-hide-empty") === "1") el.hidden = !src;
+  });
+
   // Phone bindings
   document.querySelectorAll("[data-bind-tel]").forEach((el) => {
     const telKey = el.getAttribute("data-bind-tel") || "phoneTel";
@@ -121,7 +131,21 @@ function applyConfigToDom() {
         </div>
         <p class="card__body"></p>
       `;
-      setText(article.querySelector(".service-icon"), svc.icon || "•");
+      const iconWrap = article.querySelector(".service-icon");
+      if (iconWrap) {
+        iconWrap.innerHTML = "";
+        const iconUrl = String(svc.iconUrl || "").trim();
+        if (iconUrl) {
+          const img = document.createElement("img");
+          img.src = iconUrl;
+          img.alt = String(svc.iconAlt || "").trim();
+          img.loading = "lazy";
+          img.decoding = "async";
+          iconWrap.appendChild(img);
+        } else {
+          setText(iconWrap, svc.icon || "•");
+        }
+      }
       setText(article.querySelector(".service-name"), svc.title || "");
       setText(article.querySelector(".card__body"), svc.desc || "");
       servicesGrid.appendChild(article);

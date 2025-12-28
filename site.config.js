@@ -8,9 +8,14 @@ export const SITE_CONFIG = {
   primaryCity: "Baltimore, MD",
   serviceAreas: ["Baltimore", "Towson", "Catonsville", "Parkville", "Dundalk", "Surrounding areas"],
 
+  // Branding images (add files under ./assets/brand/)
+  logoUrl: "./assets/brand/logo.png",
+  heroImageUrl: "./assets/brand/hero.jpg",
+  aboutImageUrl: "./assets/brand/about.jpg",
+
   services: [
-    { title: "AC Repair", desc: "Restore cooling fast with clear options and upfront approval.", icon: "❄" },
-    { title: "Furnace Repair", desc: "Diagnose no-heat and safety issues with straightforward next steps.", icon: "🔥" },
+    { title: "AC Repair", desc: "Restore cooling fast with clear options and upfront approval.", iconUrl: "./assets/brand/icon-ac.png", iconAlt: "AC" },
+    { title: "Furnace Repair", desc: "Diagnose no-heat and safety issues with straightforward next steps.", iconUrl: "./assets/brand/icon-furnace.png", iconAlt: "Furnace" },
     { title: "Heat Pumps", desc: "Troubleshooting, repairs, and replacement guidance for your home.", icon: "♨" },
     { title: "Maintenance", desc: "Seasonal tune-ups to reduce breakdowns and improve comfort.", icon: "🧰" },
     { title: "Thermostats", desc: "Smart thermostat installs, wiring fixes, and schedule setup.", icon: "🎛" },
@@ -57,8 +62,8 @@ export const SITE_CONFIG = {
     accentColor: "#083a9a",
   },
 
-  enableHeroImage: false,
-  heroBackgroundImageUrl: "",
+  enableHeroImage: true,
+  heroBackgroundImageUrl: "./assets/brand/hero.jpg",
 };
 
 

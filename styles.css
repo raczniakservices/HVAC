@@ -105,6 +105,13 @@ button:hover,a.btn:hover{transform:translateY(-1px);opacity:1}
   color:var(--accent);
   border:1px solid rgba(11,95,255,.18);
 }
+.brand__logo-img{
+  width:30px;
+  height:30px;
+  object-fit:contain;
+  display:block;
+  filter:drop-shadow(0 2px 8px rgba(2,6,23,.10));
+}
 .brand__name{
   font-weight:800;
   letter-spacing:-.02em;
@@ -443,6 +450,33 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border:1px solid rgba(11,95,255,.18);
   font-size:16px;
 }
+.service-icon img{
+  width:18px;
+  height:18px;
+  object-fit:contain;
+  display:block;
+}
+
+.about__grid{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:1.05fr .95fr;
+  gap:14px;
+  align-items:start;
+}
+.about__copy p{margin:0}
+.about__media{
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  overflow:hidden;
+  background:var(--bg);
+  box-shadow:var(--shadow);
+}
+.about__img{
+  width:100%;
+  height:auto;
+  display:block;
+}
 .service-name{font-weight:900}
 
 .testimonials{
@@ -656,6 +690,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   .footer__grid{grid-template-columns:1fr}
   .mobile-bar{display:flex}
   body{padding-bottom:72px} /* space for mobile bar */
+  .about__grid{grid-template-columns:1fr}
 }
 
 @media (min-width: 981px){
