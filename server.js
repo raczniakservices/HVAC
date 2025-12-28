@@ -288,6 +288,21 @@ app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 app.get("/demo", (req, res) => guardedPage(req, res, "demo.html"));
 app.get("/dashboard", (req, res) => guardedPage(req, res, "dashboard.html"));
 
+// Health check (safe to expose publicly; no secrets)
+app.get("/_health", (req, res) => {
+  return res.json({
+    ok: true,
+    service: "hvac-demo-landing",
+    node: process.version,
+    hasDemoKey: !!DEMO_KEY,
+    twilio: {
+      validateSignature: !!TWILIO_VALIDATE_SIGNATURE,
+      hasAuthToken: !!TWILIO_AUTH_TOKEN,
+      forwardEnabled: !!TWILIO_FORWARD_TO,
+    },
+  });
+});
+
 function computeTwilioSignature(url, params, authToken) {
   const body = params && typeof params === "object" ? params : {};
   const keys = Object.keys(body).sort();

@@ -65,14 +65,28 @@ Open:
 
 ### How to deploy (Render or any static host)
 
-- **Render (Static Site)**:
-  - Create a new **Static Site**
-  - **Root Directory**: `hvac-demo-landing`
-  - **Publish Directory**: `.` (dot)
-  - **Build Command**: leave blank
-  - Deploy. Render will give you an HTTPS URL.
+This demo includes an Express server (for `/demo`, `/dashboard`, and webhook APIs), so you should deploy it as a **Node Web Service**.
 
-- **Other hosts**: deploy the `hvac-demo-landing/` folder as a static site and point to `index.html`.
+#### Render (Web Service)
+- Create a new **Web Service** (Node)
+- **Build Command**: `npm ci --no-audit --no-fund`
+- **Start Command**: `npm run start`
+- **Root Directory**: leave blank (if this repo contains only this app). If it’s part of a monorepo, set it to the folder containing `server.js`.
+- Environment variables:
+  - `DEMO_KEY` (required for `/demo` + `/dashboard`)
+  - `DATABASE_PATH` (optional; set to `/var/data/calls.sqlite` if using a disk)
+  - `TWILIO_AUTH_TOKEN` (recommended; enables Twilio signature validation)
+  - `TWILIO_FORWARD_TO` (optional; if set, inbound calls are forwarded to this number)
+  - `TWILIO_VALIDATE_SIGNATURE` (default `1`; set to `0` only for debugging)
+- Optional: add a Render **Disk** mounted at `/var/data` to persist the SQLite DB.
+
+#### Health check
+After deploy, visit `/_health` to confirm the service is up and which features are enabled.
+
+### Twilio hookup
+In Twilio Console → Phone Numbers → (your number) → Voice Configuration:
+- **A call comes in** (Webhook, HTTP POST): `https://<your-render-host>/twilio/voice`
+- **Call status changes** (HTTP POST): `https://<your-render-host>/twilio/status`
 
 ### Where to put the Formspree endpoint
 
