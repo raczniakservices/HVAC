@@ -120,6 +120,37 @@ function isValidStatus(s) {
   return s === "missed" || s === "answered";
 }
 
+function clampStr(val, maxLen) {
+  const s = String(val ?? "").trim();
+  if (!s) return "";
+  const n = Number.isFinite(maxLen) ? Math.max(0, Math.floor(maxLen)) : 0;
+  if (!n) return s;
+  return s.length > n ? s.slice(0, n) : s;
+}
+
+function clientIp(req) {
+  // trust proxy is enabled, so x-forwarded-for is meaningful behind Render
+  const xf = req.headers["x-forwarded-for"];
+  if (typeof xf === "string" && xf.trim()) return xf.split(",")[0].trim();
+  return String(req.socket?.remoteAddress || "").trim();
+}
+
+// Super-lightweight in-memory throttle to reduce spam on the public form endpoint.
+// (Good enough for demo; in production you'd use a proper WAF / captcha / rate limiter.)
+const landingThrottle = new Map();
+function isRateLimited(ip, windowMs = 60_000, max = 15) {
+  const key = ip || "unknown";
+  const now = Date.now();
+  const entry = landingThrottle.get(key) || { ts: now, count: 0 };
+  if (now - entry.ts > windowMs) {
+    entry.ts = now;
+    entry.count = 0;
+  }
+  entry.count += 1;
+  landingThrottle.set(key, entry);
+  return entry.count > max;
+}
+
 function escapeXml(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -740,6 +771,50 @@ app.post("/api/webhooks/call", requireDemoAuth, (req, res) => {
       "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp) VALUES (?, ?, ?, ?, 0)"
     )
     .run(createdAt, callerNumber, status, source);
+
+  const row = db
+    .prepare("SELECT * FROM CallEvent WHERE id = ?")
+    .get(insert.lastInsertRowid);
+
+  return res.json(rowToJson(row));
+});
+
+// Landing: store form submissions so they appear on the dashboard.
+// This is not Twilio; it's "someone filled the form instead of calling".
+app.post("/api/landing/form", (req, res) => {
+  const ip = clientIp(req);
+  if (isRateLimited(ip)) return res.status(429).json({ error: "Too many requests" });
+
+  // Honeypot: bots often fill a "website" field. If present, silently drop.
+  const honeypot = String(req.body?.website ?? "").trim();
+  if (honeypot) return res.status(204).end();
+
+  const phoneRaw = normalizeCallerNumber(req.body?.phone);
+  if (!isValidCallerNumber(phoneRaw)) {
+    return res.status(400).json({
+      error: "Invalid phone",
+      message: "phone is required and must contain only '+' and digits (7-20 chars).",
+    });
+  }
+
+  const createdAt = new Date().toISOString();
+  const firstName = clampStr(req.body?.firstName, 60);
+  const cityOrZip = clampStr(req.body?.cityOrZip, 80);
+  const issue = clampStr(req.body?.issue, 80);
+  const timeframe = clampStr(req.body?.timeframe, 80);
+
+  const noteParts = [];
+  if (firstName) noteParts.push(`First: ${firstName}`);
+  if (cityOrZip) noteParts.push(`City/ZIP: ${cityOrZip}`);
+  if (issue) noteParts.push(`Issue: ${issue}`);
+  if (timeframe) noteParts.push(`Timeframe: ${timeframe}`);
+  const note = clampStr(noteParts.join(" • "), 500);
+
+  const insert = db
+    .prepare(
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, note) VALUES (?, ?, 'missed', 'landing_form', 0, ?)"
+    )
+    .run(createdAt, phoneRaw, note || null);
 
   const row = db
     .prepare("SELECT * FROM CallEvent WHERE id = ?")

@@ -425,6 +425,21 @@ async function postToFormspree(payload) {
   return res;
 }
 
+async function postToBackendFormIntake(payload) {
+  // Send to our own backend so the dashboard can show "Form submit" rows.
+  // This should work on Render (same origin) and locally. Ignore failures to keep UX smooth.
+  if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
+  try {
+    await fetch("/api/landing/form", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload || {}),
+    });
+  } catch (e) {
+    console.warn("Backend form intake failed:", e);
+  }
+}
+
 function main() {
   // Initialize AOS animations
   if (typeof AOS !== 'undefined') {
@@ -470,6 +485,10 @@ function main() {
           // Demo mode: log the captured fields so it still feels real.
           console.log("Demo form submission:", payload);
         }
+
+        // Always: send to our backend intake so it appears on /dashboard.
+        // (This is independent of Formspree; in production you'd likely also send to a CRM.)
+        postToBackendFormIntake(payload);
 
         showSuccess(form);
         // Demo bridge: log a missed-call event so it appears in /dashboard.
