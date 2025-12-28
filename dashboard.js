@@ -304,7 +304,10 @@ function setSummary(events) {
     if (el) el.textContent = String(val);
   };
 
-  const missed = events.filter((e) => e.status === "missed").length;
+  // "Unhandled" means we still need to take action.
+  // - For calls: missed and not followed up
+  // - For forms: treated as unhandled until followed up (status is stored as 'missed' for simplicity)
+  const missed = events.filter((e) => e.status === "missed" && !e.followedUp).length;
   const followedUp = events.filter((e) => !!e.followedUp).length;
   const within5 = events.filter((e) => {
     if (!e.followedUp) return false;
@@ -361,6 +364,21 @@ function renderRows(events) {
             : null;
       const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
+      // Display status:
+      // - Twilio calls: show answered/missed
+      // - Form submits: show New lead / Followed up (instead of implying a missed phone call)
+      const isFormLead = ev.source === "landing_form";
+      const statusClass = isFormLead ? (ev.followedUp ? "answered" : "missed") : ev.status;
+      const statusLabel = isFormLead ? (ev.followedUp ? "followed up" : "new lead") : ev.status;
+
+      // Show captured details for form leads (stored in note)
+      const detailsHtml =
+        isFormLead && ev.note
+          ? `<div class="muted" style="font-size:11px; margin-top:4px; line-height:1.25; white-space:normal;">${escapeHtml(
+              ev.note
+            )}</div>`
+          : "";
+
       const currentOutcome = ev.outcome ? String(ev.outcome) : "";
       const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === currentOutcome) || OUTCOME_OPTIONS[0];
       
@@ -410,8 +428,8 @@ function renderRows(events) {
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
           <td>${escapeHtml(formatTime(ev.createdAt))}</td>
-          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(ev.callerNumber)}</td>
-          <td><span class="status-badge status-badge--${escapeHtml(ev.status)}">${escapeHtml(ev.status)}</span></td>
+          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(ev.callerNumber)}${detailsHtml}</td>
+          <td><span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span></td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">

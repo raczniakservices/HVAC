@@ -758,7 +758,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   min-width:100%;
   border-collapse:separate;
   border-spacing:0;
-  table-layout:auto;
+  table-layout:fixed;
 }
 .table thead th{
   text-align:left;
@@ -779,8 +779,8 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .table thead th:nth-child(5) { width: 110px; }/* Type */
 .table thead th:nth-child(6) { width: 110px; }/* Response time */
 .table thead th:nth-child(7) { width: 95px; } /* Followed up */
-.table thead th:nth-child(8) { width: auto; } /* Outcome (flex) */
-.table thead th:nth-child(9) { width: 110px; }/* Actions */
+.table thead th:nth-child(8) { width: 190px; }/* Outcome */
+.table thead th:nth-child(9) { width: 95px; } /* Actions */
 .table tbody td{
   padding:12px 10px;
   border-bottom:1px solid rgba(226,232,240,.7);
