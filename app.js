@@ -241,12 +241,29 @@ function applyConfigToDom() {
     const tolerancePx = 1; // collapse sub-pixel differences safely
 
     /** @type {{ left: number, firstIndex: number }[]} */
-    const raw = children.map((el, i) => ({ left: Math.min(el.offsetLeft, maxLeft), firstIndex: i }));
+    const baseLeft = Number(children[0]?.offsetLeft || 0);
+    let delta = 0;
+    if (children.length >= 2) {
+      delta = Number(children[1].offsetLeft - children[0].offsetLeft);
+    }
+    if (!Number.isFinite(delta) || delta <= 0) delta = Math.max(1, track.clientWidth);
+
+    // Generate reachable snap positions based on the real slide-to-slide delta.
+    // This is more reliable than using raw offsetLefts directly because the browser may apply
+    // padding/scroll snapping offsets that make "go to slide N" not equal to "scrollLeft = offsetLeft(N)".
+    const raw = [];
+    for (let i = 0; i < children.length; i++) {
+      const target = Math.min(baseLeft + i * delta, maxLeft);
+      raw.push({ left: target, firstIndex: i });
+      if (target >= maxLeft - tolerancePx) break;
+    }
+
     const unique = [];
     for (const p of raw) {
       const last = unique[unique.length - 1];
       if (!last || Math.abs(last.left - p.left) > tolerancePx) unique.push(p);
     }
+
     return unique.length ? unique : [{ left: 0, firstIndex: 0 }];
   }
 
