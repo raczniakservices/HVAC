@@ -37,6 +37,15 @@ function escapeHtml(s) {
 }
 
 function formatTime(iso) {
+  // Keep the table compact (video-friendly). Put full timestamp in the cell title.
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return String(iso || "");
+  }
+}
+
+function formatTimeFull(iso) {
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -372,9 +381,7 @@ function renderRows(events) {
       // Show captured details for form leads (stored in note)
       const detailsHtml =
         isFormLead && ev.note
-          ? `<div class="muted" style="font-size:11px; margin-top:4px; line-height:1.25; white-space:normal;">${escapeHtml(
-              ev.note
-            )}</div>`
+          ? `<div class="caller-cell__details muted">${escapeHtml(ev.note)}</div>`
           : "";
 
       const currentOutcome = ev.outcome ? String(ev.outcome) : "";
@@ -425,8 +432,11 @@ function renderRows(events) {
 
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
-          <td>${escapeHtml(formatTime(ev.createdAt))}</td>
-          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(ev.callerNumber)}${detailsHtml}</td>
+          <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
+          <td class="caller-cell">
+            <div class="caller-cell__num">${escapeHtml(ev.callerNumber)}</div>
+            ${detailsHtml}
+          </td>
           <td><span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span></td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>

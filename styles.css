@@ -905,7 +905,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 
 .outcome-select{
   width:100%;
-  min-width:120px;
+  min-width:0;
   padding:8px 10px;
   border-radius:12px;
   font-weight:800;
@@ -921,19 +921,26 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   vertical-align:middle;
 }
 
+.dashboard-page .container{
+  /* Give the dashboard a bit more breathing room on laptop widths */
+  width:min(1200px, calc(100% - 32px));
+}
+
 .table-wrap{
   border:1px solid var(--line);
   border-radius:var(--radius);
   background:var(--bg);
-  overflow-x:auto;
+  /* Goal: no horizontal scroll for the video demo */
+  overflow-x:hidden;
   overflow-y:visible;
   box-shadow:var(--shadow);
 }
 .table{
-  /* Inline-table + max-content keeps columns tight (no huge empty gaps) */
-  display:inline-table;
-  width:max-content;
-  min-width:100%;
+  /* Fit the table to the viewport (no horizontal scrolling). */
+  display:table;
+  width:100%;
+  max-width:100%;
+  min-width:0;
   border-collapse:separate;
   border-spacing:0;
   table-layout:fixed;
@@ -949,19 +956,18 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   position:sticky;
   top:0;
 }
-/* Dashboard table column sizing (8 columns) */
-.table thead th:nth-child(1) { width: 14%; }   /* Time */
-.table thead th:nth-child(2) { width: 18%; }   /* Caller (+details) */
-.table thead th:nth-child(3) { width: 120px; } /* Status */
-.table thead th:nth-child(4) { width: 105px; } /* Call length */
-.table thead th:nth-child(5) { width: 110px; } /* Type */
+/* Dashboard table column sizing (8 columns) — pixel tuned for “no horizontal scroll” */
+.table thead th:nth-child(1) { width: 110px; } /* Time */
+.table thead th:nth-child(3) { width: 96px; }  /* Status */
+.table thead th:nth-child(4) { width: 84px; }  /* Call length */
+.table thead th:nth-child(5) { width: 108px; } /* Type */
 .table thead th:nth-child(6) { width: 110px; } /* Response time */
-.table thead th:nth-child(7) { width: 240px; } /* Result */
-.table thead th:nth-child(8) { width: 95px; }  /* Actions */
+.table thead th:nth-child(7) { width: 210px; } /* Result */
+.table thead th:nth-child(8) { width: 64px; }  /* Actions */
 .table tbody td{
-  padding:12px 10px;
+  padding:10px 8px;
   border-bottom:1px solid rgba(226,232,240,.7);
-  font-size:13px;
+  font-size:12.5px;
   vertical-align:top;
   word-break:break-word;
   overflow:hidden;
@@ -998,6 +1004,38 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   align-items:center;
   gap:6px;
   white-space:nowrap;
+}
+
+/* Dashboard caller cell: keep the phone readable, but allow details to wrap */
+.caller-cell{
+  min-width:0;
+}
+.caller-cell__num{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  white-space:nowrap;
+}
+.caller-cell__details{
+  margin-top:4px;
+  font-size:11px;
+  line-height:1.25;
+  white-space:normal;
+}
+
+/* If the viewport is tight, hide less-critical columns to keep everything on one screen */
+@media (max-width: 980px){
+  .table thead th:nth-child(4),
+  .table tbody td:nth-child(4),
+  .table thead th:nth-child(6),
+  .table tbody td:nth-child(6){
+    display:none;
+  }
+  /* Keep layout stable on smaller widths */
+  .table thead th:nth-child(1) { width: 96px; }  /* Time */
+  .table thead th:nth-child(3) { width: 92px; }  /* Status */
+  .table thead th:nth-child(5) { width: 96px; }  /* Type */
+  .table thead th:nth-child(7) { width: 190px; } /* Result */
+  .table thead th:nth-child(8) { width: 56px; }  /* Actions */
 }
 .table code{
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
