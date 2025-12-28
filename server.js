@@ -403,13 +403,26 @@ function requireTwilioAuth(req, res, next) {
   return res.status(403).type("text/plain").send("Forbidden");
 }
 
-function normalizeTwilioCallStatus({ callStatus, dialCallStatus, hasForwarding }) {
+function normalizeTwilioCallStatus({
+  callStatus,
+  dialCallStatus,
+  hasForwarding,
+  callDurationSec,
+  dialCallDurationSec,
+}) {
   const cs = String(callStatus || "").toLowerCase().trim();
   const dcs = String(dialCallStatus || "").toLowerCase().trim();
 
   // If we are NOT forwarding, Twilio "completed" just means it finished our TwiML.
   // That does NOT indicate a real human answered, so treat as missed/unhandled.
   if (!hasForwarding) return "missed";
+
+  // Most reliable: if Twilio reports a connected leg duration, it was answered.
+  // When forwarding via <Dial>, DialCallDuration represents the forwarded leg.
+  if (typeof dialCallDurationSec === "number" && dialCallDurationSec > 0) return "answered";
+  // For completeness, if Twilio reports overall call duration > 0, treat as answered.
+  // (This helps when DialCallStatus/DialCallDuration aren't present in a callback.)
+  if (typeof callDurationSec === "number" && callDurationSec > 0) return "answered";
 
   // When forwarding via <Dial>, trust DialCallStatus if present.
   // Twilio DialCallStatus values: completed | busy | no-answer | failed | canceled
@@ -440,6 +453,8 @@ function upsertTwilioEvent({
     callStatus,
     dialCallStatus,
     hasForwarding: !!TWILIO_FORWARD_TO,
+    callDurationSec,
+    dialCallDurationSec,
   });
   const twilioStatus = String(dialCallStatus || callStatus || "").trim();
 
