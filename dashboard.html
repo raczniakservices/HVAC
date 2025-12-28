@@ -33,7 +33,6 @@
           </div>
         </div>
         <div class="topbar__right" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <a class="btn btn--secondary" id="goDemo" href="/demo">Simulator</a>
           <label class="topbar-toggle" title="Hide demo-generated rows from the table and summary">
             <input id="hideDemoRows" type="checkbox" checked />
             Hide Demo rows
@@ -43,6 +42,10 @@
             <span class="muted">•</span>
             Updated <span id="lastUpdatedAgo">—</span> ago
           </div>
+          <button class="btn btn--secondary" id="exportBtn" type="button" title="Export the currently visible rows to CSV">
+            <span aria-hidden="true">⬇</span>
+            Export
+          </button>
           <button class="btn btn--primary" id="refreshBtn" type="button">Refresh</button>
           <button class="btn btn--secondary" id="clearAllBtn" type="button">Clear all</button>
         </div>
@@ -114,7 +117,7 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./dashboard.js?v=11" defer></script>
+    <script src="./dashboard.js?v=12" defer></script>
   </body>
 </html>
 

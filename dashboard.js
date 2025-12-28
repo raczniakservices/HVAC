@@ -82,6 +82,55 @@ function formatDuration(seconds) {
   return `${m}m ${rem}s`;
 }
 
+function formatLocalDateTime(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return String(iso || "");
+  }
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  // Escape if it contains characters that would break CSV
+  if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+  return s;
+}
+
+function buildCsv(rows, headers) {
+  const headerLine = headers.map((h) => csvEscape(h.label)).join(",");
+  const lines = rows.map((r) =>
+    headers.map((h) => csvEscape(h.get(r))).join(",")
+  );
+  return [headerLine, ...lines].join("\r\n") + "\r\n";
+}
+
+function downloadTextFile({ filename, text, mimeType }) {
+  const blob = new Blob([text], { type: mimeType || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke after a tick to avoid revoking before download starts in some browsers
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function filenameTimestamp(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}_${hh}${min}`;
+}
+
 const OUTCOME_OPTIONS = [
   { value: "", label: "Set result…", displayLabel: "Set result…", color: "#94a3b8" },
   { value: "booked", label: "Booked", displayLabel: "✅ Booked", color: "#16a34a" },
@@ -149,6 +198,24 @@ function computeResponseSeconds(ev) {
   const followed = parseIsoMs(ev?.followedUpAt);
   if (!Number.isFinite(created) || !Number.isFinite(followed)) return null;
   return Math.max(0, Math.floor((followed - created) / 1000));
+}
+
+function getCallLengthSeconds(ev) {
+  if (typeof ev?.dialCallDurationSec === "number") return ev.dialCallDurationSec;
+  if (typeof ev?.callDurationSec === "number") return ev.callDurationSec;
+  return null;
+}
+
+function getOutcomeOption(outcomeValue) {
+  const v = outcomeValue ? String(outcomeValue) : "";
+  return OUTCOME_OPTIONS.find((o) => o.value === v) || OUTCOME_OPTIONS[0];
+}
+
+function getDisplayStatus(ev) {
+  const isFormLead = ev?.source === "landing_form";
+  const statusClass = isFormLead ? (ev?.followedUp ? "answered" : "missed") : ev?.status;
+  const statusLabel = isFormLead ? (ev?.followedUp ? "followed up" : "new lead") : ev?.status;
+  return { statusClass, statusLabel };
 }
 
 function setLastFetch(date) {
@@ -307,6 +374,57 @@ async function clearAll() {
   return json;
 }
 
+function exportVisibleRowsToCsv() {
+  const visible = applyDemoFilter(eventsCache);
+  if (!Array.isArray(visible) || visible.length === 0) {
+    showToast("Nothing to export (no rows match the current filter)", "bad");
+    return;
+  }
+
+  const headers = [
+    { label: "Created At (ISO)", get: (ev) => ev?.createdAt || "" },
+    { label: "Created At (Local)", get: (ev) => formatLocalDateTime(ev?.createdAt) },
+    { label: "Caller", get: (ev) => ev?.callerNumber || "" },
+    { label: "Details / Note", get: (ev) => ev?.note || "" },
+    { label: "Status", get: (ev) => getDisplayStatus(ev).statusLabel || "" },
+    { label: "Call Length (sec)", get: (ev) => {
+        const s = getCallLengthSeconds(ev);
+        return typeof s === "number" && Number.isFinite(s) ? String(Math.max(0, Math.floor(s))) : "";
+      }
+    },
+    { label: "Call Length", get: (ev) => {
+        const s = getCallLengthSeconds(ev);
+        return typeof s === "number" && Number.isFinite(s) ? formatDuration(s) : "";
+      }
+    },
+    { label: "Type", get: (ev) => formatSource(ev?.source).label },
+    { label: "Response Time (sec)", get: (ev) => {
+        const rs = computeResponseSeconds(ev);
+        return typeof rs === "number" && Number.isFinite(rs) ? String(rs) : "";
+      }
+    },
+    { label: "Response Time", get: (ev) => {
+        const rs = computeResponseSeconds(ev);
+        return typeof rs === "number" && Number.isFinite(rs) ? formatDuration(rs) : "";
+      }
+    },
+    { label: "Result", get: (ev) => getOutcomeOption(ev?.outcome).label || "" },
+    { label: "Result At (ISO)", get: (ev) => ev?.outcomeAt || "" },
+    { label: "Result At (Local)", get: (ev) => formatLocalDateTime(ev?.outcomeAt) },
+    { label: "Followed Up", get: (ev) => (ev?.followedUp ? "yes" : "no") },
+    { label: "Followed Up At (ISO)", get: (ev) => ev?.followedUpAt || "" },
+    { label: "Source (raw)", get: (ev) => ev?.source || "" },
+    { label: "Status (raw)", get: (ev) => ev?.status || "" },
+    { label: "Outcome (raw)", get: (ev) => ev?.outcome || "" },
+    { label: "ID", get: (ev) => ev?.id || "" },
+  ];
+
+  const csv = buildCsv(visible, headers);
+  const filename = `opportunity-visibility_${filenameTimestamp(new Date())}.csv`;
+  downloadTextFile({ filename, text: csv, mimeType: "text/csv;charset=utf-8" });
+  showToast(`Exported ${visible.length} row(s)`, "ok");
+}
+
 function setSummary(events) {
   const set = (id, val) => {
     const el = document.getElementById(id);
@@ -347,7 +465,7 @@ function renderRows(events) {
       hasAny && hideDemoRows && eventsCache.every((e) => e?.source === "simulator");
     const msg = hiddenOnlyDemo
       ? `No rows match the current filter. Uncheck “Hide Demo rows” to view demo data.`
-      : `No events yet. Use the Simulator to create one.`;
+      : `No events yet.`;
     tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
     return;
   }
@@ -519,8 +637,7 @@ async function main() {
   console.log("🔧 #rows element:", $("#rows"));
   
   // Keep simulator link keyed
-  const goDemo = $("#goDemo");
-  if (goDemo) goDemo.href = withKey("/demo");
+  // Simulator link removed from UI (demo-only tooling).
 
   const hideToggle = $("#hideDemoRows");
   hideDemoRows = readHideDemoRowsFromStorage();
@@ -535,6 +652,7 @@ async function main() {
     });
   }
 
+  $("#exportBtn")?.addEventListener("click", () => exportVisibleRowsToCsv());
   $("#refreshBtn")?.addEventListener("click", () => loadCalls({ silent: false }));
   $("#clearAllBtn")?.addEventListener("click", async () => {
     if (!confirm("Clear all call events? (demo cleanup)")) return;
