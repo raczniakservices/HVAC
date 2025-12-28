@@ -710,7 +710,8 @@ async function main() {
 
   setLastFetch(null);
   startAgoTicker();
-  await loadCalls({ silent: true });
+  // First load should not be silent so auth/key issues are visible immediately.
+  await loadCalls({ silent: false });
 
   // Auto-refresh every ~10s, but pause when tab is hidden.
   document.addEventListener("visibilitychange", () => {
