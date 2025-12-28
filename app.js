@@ -430,13 +430,24 @@ async function postToBackendFormIntake(payload) {
   // This should work on Render (same origin) and locally. Ignore failures to keep UX smooth.
   if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
   try {
-    await fetch("/api/landing/form", {
+    const res = await fetch("/api/landing/form", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
     });
+    if (!res.ok) {
+      let msg = "Form intake failed";
+      try {
+        const json = await res.json();
+        msg = json?.message || json?.error || msg;
+      } catch {
+        // ignore
+      }
+      showLandingToast(msg, "bad");
+    }
   } catch (e) {
     console.warn("Backend form intake failed:", e);
+    showLandingToast("Form intake failed (network)", "bad");
   }
 }
 

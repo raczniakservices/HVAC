@@ -747,15 +747,18 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border:1px solid var(--line);
   border-radius:var(--radius);
   background:var(--bg);
-  overflow-x:hidden;
+  overflow-x:auto;
   overflow-y:visible;
   box-shadow:var(--shadow);
 }
 .table{
-  width:100%;
+  /* Inline-table + max-content keeps columns tight (no huge empty gaps) */
+  display:inline-table;
+  width:max-content;
+  min-width:100%;
   border-collapse:separate;
   border-spacing:0;
-  table-layout:fixed;
+  table-layout:auto;
 }
 .table thead th{
   text-align:left;
@@ -785,6 +788,11 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   vertical-align:top;
   word-break:break-word;
   overflow:hidden;
+}
+.table tbody td:nth-child(3){
+  white-space:nowrap;
+  word-break:normal;
+  overflow-wrap:normal;
 }
 .table tbody td:nth-child(3),
 .table tbody td:nth-child(4),

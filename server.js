@@ -106,6 +106,23 @@ function digitsOnly(s) {
   return String(s || "").replace(/[^\d]/g, "");
 }
 
+function normalizeLeadPhone(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  // Already E.164-ish
+  if (s.startsWith("+")) {
+    const digits = digitsOnly(s);
+    return digits ? `+${digits}` : "";
+  }
+  const digits = digitsOnly(s);
+  if (!digits) return "";
+  // US-friendly normalization (good enough for demo)
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  // Fallback: return raw digits; validator allows optional '+'
+  return digits;
+}
+
 function isSamePhoneNumber(a, b) {
   const da = digitsOnly(a);
   const db = digitsOnly(b);
@@ -789,11 +806,12 @@ app.post("/api/landing/form", (req, res) => {
   const honeypot = String(req.body?.website ?? "").trim();
   if (honeypot) return res.status(204).end();
 
-  const phoneRaw = normalizeCallerNumber(req.body?.phone);
+  const phoneRaw = normalizeLeadPhone(req.body?.phone);
   if (!isValidCallerNumber(phoneRaw)) {
     return res.status(400).json({
       error: "Invalid phone",
-      message: "phone is required and must contain only '+' and digits (7-20 chars).",
+      message:
+        "phone is required. Accepts formats like (443) 555-1234 or +14435551234. Must be 7-20 digits after normalization.",
     });
   }
 

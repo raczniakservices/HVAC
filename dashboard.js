@@ -637,14 +637,10 @@ async function main() {
   });
 
   $("#rows")?.addEventListener("change", async (e) => {
-    console.log("🔥 CHANGE EVENT FIRED", e.target);
-    // For <select> elements, e.target IS the select, not a child
     if (!e.target.matches || !e.target.matches(".js-outcome")) {
-      console.log("❌ Not a .js-outcome element");
       return;
     }
     
-    console.log("✅ Matched .js-outcome");
     const sel = e.target;
     const tr = sel.closest("tr");
     const id = tr?.dataset?.id;
@@ -653,8 +649,6 @@ async function main() {
     const raw = sel.value;
     const outcome = raw ? raw : null;
     const prev = getEventById(id)?.outcome ?? null;
-
-    console.log("Outcome change:", { id, outcome, prev });
 
     pauseAutoRefresh(3000);
     mutationEpoch += 1;
@@ -671,6 +665,15 @@ async function main() {
 
       const updated = await setOutcome(id, outcome);
       upsertEvent(updated);
+
+      // Make this useful for real ops: setting an outcome implies you followed up.
+      // Auto-mark "Followed up" when user sets a non-null outcome.
+      const afterOutcome = getEventById(id);
+      if (outcome && afterOutcome && !afterOutcome.followedUp) {
+        const fu = await followUp(id);
+        upsertEvent(fu);
+      }
+
       mutatingIds.delete(String(id));
       editingOutcomeIds.delete(String(id));
       {
@@ -678,7 +681,10 @@ async function main() {
         renderRows(filtered);
         setSummary(filtered);
       }
-      showToast(outcome ? "Outcome saved" : "Outcome cleared", "ok");
+      showToast(
+        outcome ? "Outcome saved (marked followed up)" : "Outcome cleared",
+        "ok"
+      );
     } catch (err) {
       mutatingIds.delete(String(id));
       console.error("Outcome save failed", err);
