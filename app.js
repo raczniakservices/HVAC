@@ -6,6 +6,16 @@ import { SITE_CONFIG } from "./site.config.js";
  */
 const FORM_ENDPOINT = "";
 
+function getIsDemo() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = String(params.get("demo") || "").trim().toLowerCase();
+    return raw === "1" || raw === "true";
+  } catch {
+    return false;
+  }
+}
+
 function $(sel, root = document) {
   return root.querySelector(sel);
 }
@@ -16,6 +26,14 @@ function setText(el, value) {
 }
 
 function applyConfigToDom() {
+  // Demo switch (no visible demo UI by request; used only for future toggles)
+  const isDemo = getIsDemo();
+  try {
+    document.documentElement.dataset.demo = isDemo ? "1" : "0";
+  } catch {
+    // ignore
+  }
+
   // Theme
   try {
     const root = document.documentElement;
@@ -154,6 +172,15 @@ function applyConfigToDom() {
           img.alt = String(svc.iconAlt || "").trim();
           img.loading = "lazy";
           img.decoding = "async";
+          img.addEventListener("error", () => {
+            // Fallback gracefully if the asset isn't present
+            try {
+              iconWrap.innerHTML = "";
+              setText(iconWrap, svc.icon || "•");
+            } catch {
+              // ignore
+            }
+          });
           iconWrap.appendChild(img);
         } else {
           setText(iconWrap, svc.icon || "•");
@@ -165,17 +192,24 @@ function applyConfigToDom() {
     });
   }
 
-  // Testimonials
-  const testimonialsGrid = document.getElementById("testimonialsGrid");
-  if (testimonialsGrid) {
-    testimonialsGrid.innerHTML = "";
-    (SITE_CONFIG.testimonials || []).slice(0, 3).forEach((t, idx) => {
+  // Testimonials carousel
+  const track = document.getElementById("testimonialsTrack");
+  const dots = document.getElementById("testimonialsDots");
+  const btnPrev = document.querySelector('button[data-carousel="prev"]');
+  const btnNext = document.querySelector('button[data-carousel="next"]');
+  const items = (SITE_CONFIG.testimonials || []).slice(0, 12);
+
+  function buildCarousel() {
+    if (!track || !dots) return;
+    track.innerHTML = "";
+    dots.innerHTML = "";
+
+    items.forEach((t, idx) => {
       const stars = Math.max(1, Math.min(5, Number(t.stars || 5)));
-      const article = document.createElement("article");
-      article.className = "testimonial";
-      article.setAttribute("data-aos", "fade-up");
-      article.setAttribute("data-aos-delay", String(100 + idx * 100));
-      article.innerHTML = `
+      const slide = document.createElement("article");
+      slide.className = "testimonial carousel__slide";
+      slide.setAttribute("data-idx", String(idx));
+      slide.innerHTML = `
         <div class="testimonial__meta">
           <div class="stars" aria-label="${stars} stars">${"★".repeat(stars)}${"☆".repeat(5 - stars)}</div>
           <div class="verified">Verified homeowner</div>
@@ -183,10 +217,145 @@ function applyConfigToDom() {
         <p class="testimonial__text"></p>
         <div class="testimonial__author"></div>
       `;
-      setText(article.querySelector(".testimonial__text"), `"${t.text || ""}"`);
-      setText(article.querySelector(".testimonial__author"), `— ${t.name || ""}, ${t.city || ""}`.trim());
-      testimonialsGrid.appendChild(article);
+      setText(slide.querySelector(".testimonial__text"), `"${t.text || ""}"`);
+      setText(slide.querySelector(".testimonial__author"), `— ${t.name || ""}, ${t.city || ""}`.trim());
+      track.appendChild(slide);
     });
+  }
+
+  // Build "steps" based on *reachable* scroll-snap positions.
+  // When multiple cards are visible (e.g., 3-up), the last few cards cannot snap to "start"
+  // because the browser clamps scrollLeft to maxScrollLeft. If we create dots per card and
+  // navigate by card index, the carousel can appear to "stick" near the end.
+  //
+  // Instead, we compute unique, clamped scrollLeft targets and navigate by those.
+  /** @type {{ left: number, firstIndex: number }[]} */
+  let steps = [];
+
+  function computeSteps() {
+    if (!track) return [];
+    const children = Array.from(track.children);
+    if (children.length === 0) return [{ left: 0, firstIndex: 0 }];
+
+    const maxLeft = Math.max(0, track.scrollWidth - track.clientWidth);
+    const tolerancePx = 1; // collapse sub-pixel differences safely
+
+    /** @type {{ left: number, firstIndex: number }[]} */
+    const raw = children.map((el, i) => ({ left: Math.min(el.offsetLeft, maxLeft), firstIndex: i }));
+    const unique = [];
+    for (const p of raw) {
+      const last = unique[unique.length - 1];
+      if (!last || Math.abs(last.left - p.left) > tolerancePx) unique.push(p);
+    }
+    return unique.length ? unique : [{ left: 0, firstIndex: 0 }];
+  }
+
+  function getStepFromScroll() {
+    if (!track || steps.length === 0) return 0;
+    const left = track.scrollLeft;
+    let bestIdx = 0;
+    let best = Infinity;
+    for (let i = 0; i < steps.length; i++) {
+      const d = Math.abs(steps[i].left - left);
+      if (d < best) {
+        best = d;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  function setActiveDot(stepIdx) {
+    if (!dots) return;
+    Array.from(dots.children).forEach((d, i) => {
+      d.setAttribute("aria-current", i === stepIdx ? "true" : "false");
+    });
+  }
+
+  function scrollToStep(stepIdx) {
+    if (!track) return;
+    const step = steps[stepIdx];
+    if (!step) return;
+    track.scrollTo({ left: step.left, behavior: "smooth" });
+    setActiveDot(stepIdx);
+  }
+
+  let autoT = null;
+  function startAuto() {
+    stopAuto();
+    if (!track || steps.length <= 1) return;
+    autoT = setInterval(() => {
+      const i = getStepFromScroll();
+      const next = (i + 1) % steps.length;
+      scrollToStep(next);
+    }, 6500);
+  }
+  function stopAuto() {
+    if (autoT) clearInterval(autoT);
+    autoT = null;
+  }
+
+  if (track && dots && items.length) {
+    buildCarousel();
+
+    function rebuildStepsAndDots({ keepScrollPosition } = { keepScrollPosition: true }) {
+      if (!track || !dots) return;
+      steps = computeSteps();
+
+      // Rebuild dots to match reachable steps (not raw item count).
+      dots.innerHTML = "";
+      steps.forEach((s, i) => {
+        const dot = document.createElement("button");
+        dot.className = "carousel__dot";
+        dot.type = "button";
+        const humanStep = i + 1;
+        dot.setAttribute("aria-label", `Go to testimonials page ${humanStep} of ${steps.length}`);
+        dot.addEventListener("click", () => scrollToStep(i));
+        dots.appendChild(dot);
+      });
+
+      const active = getStepFromScroll();
+      setActiveDot(active);
+      if (!keepScrollPosition) scrollToStep(active);
+    }
+
+    rebuildStepsAndDots();
+    startAuto();
+
+    let scrollT = null;
+    track.addEventListener("scroll", () => {
+      window.clearTimeout(scrollT);
+      scrollT = window.setTimeout(() => setActiveDot(getStepFromScroll()), 80);
+    });
+    track.addEventListener("pointerenter", stopAuto);
+    track.addEventListener("pointerleave", startAuto);
+    track.addEventListener("focusin", stopAuto);
+    track.addEventListener("focusout", startAuto);
+
+    if (btnPrev)
+      btnPrev.addEventListener("click", () => {
+        const i = getStepFromScroll();
+        const prev = (i - 1 + steps.length) % steps.length;
+        scrollToStep(prev);
+      });
+    if (btnNext)
+      btnNext.addEventListener("click", () => {
+        const i = getStepFromScroll();
+        const next = (i + 1) % steps.length;
+        scrollToStep(next);
+      });
+
+    // Keep steps in sync with responsive layout changes.
+    let rT = null;
+    window.addEventListener("resize", () => {
+      window.clearTimeout(rT);
+      rT = window.setTimeout(() => rebuildStepsAndDots(), 120);
+    });
+  } else {
+    // Hide controls if carousel not present
+    if (btnPrev) btnPrev.hidden = true;
+    if (btnNext) btnNext.hidden = true;
+    if (dots) dots.hidden = true;
   }
 
   // Service areas

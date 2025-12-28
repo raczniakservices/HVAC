@@ -44,15 +44,9 @@
 
     <header class="topbar" role="banner">
       <div class="container topbar__inner">
-        <div class="brand" aria-label="HVAC service">
-          <div class="brand__logo" aria-hidden="true">
-            <img class="brand__logo-img" data-bind-src="logoUrl" alt="" />
-          </div>
-          <div class="brand__text">
-            <div class="brand__name" data-bind="companyName">HVAC Service</div>
-            <div class="brand__tag" data-bind="tagline">Repairs, maintenance, and emergency service</div>
-          </div>
-        </div>
+        <a class="brand" href="#request" data-scroll="request" aria-label="Request service">
+          <img class="brand__mark" data-bind-src="logoUrl" alt="Blue Ridge Heating &amp; Air" />
+        </a>
 
         <div class="topbar__right">
           <a class="phone-link" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call">
@@ -87,34 +81,37 @@
               </span>
             </div>
 
-            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service Today? Get Scheduled in Under 60 Seconds.</h1>
+            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service Today? Request Service in Under 60 Seconds.</h1>
             <p class="hero__subhead" data-aos="fade-up" data-aos-delay="500">
-              Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls.
+              Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls. Call now or request a callback. We confirm availability quickly.
             </p>
 
             <div class="trust-strip" aria-label="Trust signals" data-aos="fade-up" data-aos-delay="600" id="trustStrip">
               <!-- populated from config -->
             </div>
-                    <div class="brand-badges" data-aos="fade-up" data-aos-delay="650">
-                      <img class="brand-badges__rating" data-bind-src="ratingBannerUrl" data-hide-empty="1" alt="5-star rated service" />
-                    </div>
 
             <div class="hero__cta" data-aos="fade-up" data-aos-delay="700">
               <a class="btn btn--primary btn--lg" href="#request" data-scroll="request">
                 Request Service Now
               </a>
-              <a class="btn btn--secondary btn--lg" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call now">
-                Call Now
-                <span class="btn__sub" data-bind="phoneDisplay">(000) 000-0000</span>
+              <a class="btn btn--secondary btn--lg btn--call" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call">
+                Call
+                <span class="btn__number" data-bind="phoneDisplay">(000) 000-0000</span>
               </a>
             </div>
+            <p class="hero__micro" data-aos="fade-up" data-aos-delay="720">
+              Calls and requests are logged instantly so nothing gets missed.
+            </p>
+            <p class="hero__hours" data-aos="fade-up" data-aos-delay="740">
+              Hours: <span data-bind="hours">Mon–Sun 8am–8pm</span>. After-hours requests receive priority callback when we open.
+            </p>
           </div>
 
           <aside class="hero__form" aria-label="Request service form" data-aos="fade-left" data-aos-delay="500">
             <div class="form-card" id="request">
               <div class="form-card__head">
                 <h2 class="form-card__title">Request Service</h2>
-                  <p class="form-card__subtitle">Just the details needed to reach you and confirm scheduling.</p>
+                  <p class="form-card__subtitle">Just the details needed to reach you and confirm availability quickly.</p>
               </div>
 
               <form id="serviceForm" novalidate>
@@ -171,6 +168,7 @@
                 </div>
 
                 <button class="btn btn--primary btn--block" type="submit">Have a Tech Contact Me</button>
+                <p class="form-privacy">No spam. We use this only to confirm your request quickly.</p>
 
                 <p class="form-footnote">
                   Prefer a faster response? Call:
@@ -227,7 +225,18 @@
             <p class="muted" data-aos="fade-up" data-aos-delay="100">Recent feedback from local homeowners</p>
           </div>
 
-          <div class="testimonials" id="testimonialsGrid"></div>
+          <div class="carousel" aria-label="Testimonials">
+            <button class="carousel__btn" type="button" data-carousel="prev" aria-label="Previous testimonial">
+              ‹
+            </button>
+            <div class="carousel__viewport" tabindex="0">
+              <div class="carousel__track" id="testimonialsTrack" aria-live="polite"></div>
+            </div>
+            <button class="carousel__btn" type="button" data-carousel="next" aria-label="Next testimonial">
+              ›
+            </button>
+          </div>
+          <div class="carousel__dots" id="testimonialsDots" aria-label="Testimonials pagination"></div>
         </div>
       </section>
 
@@ -235,7 +244,7 @@
         <div class="container">
           <div class="section__head">
             <h2>What happens next</h2>
-            <p class="muted">No guessing. No runaround. Just a clear path to get you scheduled.</p>
+            <p class="muted">No guessing. No runaround. Just a clear path to confirm availability and next steps.</p>
           </div>
 
           <div class="steps">
@@ -264,9 +273,10 @@
         <div class="container">
           <div class="section__head">
             <h2>Service Areas</h2>
-            <p class="muted" data-bind="primaryCity">Serving your area</p>
+            <p class="muted">Serving Baltimore and nearby areas</p>
           </div>
           <div class="chips" role="list" id="serviceAreasChips"></div>
+          <p class="areas-help muted">Not sure if we cover your area? Call and ask.</p>
         </div>
       </section>
 
@@ -278,6 +288,24 @@
           </div>
 
           <div class="faq">
+            <details class="faq__item">
+              <summary>How does scheduling work?</summary>
+              <div class="faq__body">
+                Once you call or send a request, we confirm availability by phone. This keeps scheduling flexible for emergencies and same-day service.
+              </div>
+            </details>
+            <details class="faq__item">
+              <summary>What does a diagnostic cost?</summary>
+              <div class="faq__body">
+                It depends on the system and the issue. We’ll confirm the diagnostic details when we contact you.
+              </div>
+            </details>
+            <details class="faq__item">
+              <summary>How fast can you come out?</summary>
+              <div class="faq__body">
+                Availability depends on the schedule. Call for the fastest response, or request service and we’ll confirm the soonest slot.
+              </div>
+            </details>
             <details class="faq__item">
               <summary>Do you offer emergency HVAC repair?</summary>
               <div class="faq__body">
@@ -321,8 +349,8 @@
       <section class="cta-band" aria-label="Final call to action">
         <div class="container cta-band__inner">
           <div class="cta-band__copy">
-            <h2>Ready to get scheduled?</h2>
-            <p class="muted">Call now for the fastest response, or send a request and we’ll reach out shortly.</p>
+            <h2>Ready to request service?</h2>
+            <p class="muted">Call now for the fastest response, or send a request and we’ll confirm availability quickly. After-hours requests receive priority callback when we open.</p>
           </div>
           <div class="cta-band__actions">
             <a class="btn btn--primary btn--lg" data-bind-tel="phoneTel" href="tel:+10000000000">Call Now</a>
@@ -353,7 +381,7 @@
     <!-- Sticky mobile action bar -->
     <div class="mobile-bar" role="region" aria-label="Quick actions">
       <a class="mobile-bar__btn mobile-bar__btn--call" data-bind-tel="phoneTel" href="tel:+10000000000">
-        Call Now
+        Call
       </a>
       <button class="mobile-bar__btn mobile-bar__btn--form" type="button" data-scroll="request">
         Request Service
