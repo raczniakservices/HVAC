@@ -153,6 +153,7 @@ function guardedPage(req, res, fileName) {
 
   // Simple password prompt → stores in localStorage + cookie, then redirects with ?key=
   const target = req.path;
+  const hadQueryKey = !!(req.query && typeof req.query.key !== "undefined");
   return res
     .status(401)
     .type("html")
@@ -206,10 +207,27 @@ function guardedPage(req, res, fileName) {
     <script>
       (function(){
         const targetPath = ${JSON.stringify(target)};
+        const hadQueryKey = ${JSON.stringify(hadQueryKey)};
         const params = new URLSearchParams(window.location.search);
-        const existing = params.get("key") || localStorage.getItem("hvac_demo_key") || "";
-        if (existing) {
-          // Try redirect immediately with existing key
+
+        // Escape hatch: /dashboard?reset=1 clears any saved key/cookie so you can re-enter cleanly.
+        if (params.get("reset") === "1") {
+          try { localStorage.removeItem("hvac_demo_key"); } catch {}
+          try { document.cookie = "demo_key=; Max-Age=0; path=/; SameSite=Lax"; } catch {}
+          params.delete("reset");
+          params.delete("key");
+          const clean = new URL(window.location.href);
+          clean.search = params.toString() ? ("?" + params.toString()) : "";
+          window.history.replaceState({}, "", clean.toString());
+        }
+
+        const fromUrl = (params.get("key") || "").trim();
+        const fromStore = (localStorage.getItem("hvac_demo_key") || "").trim();
+        const existing = fromUrl || fromStore || "";
+
+        // IMPORTANT: if a key was already tried via ?key=, do NOT auto-redirect again (prevents loops).
+        // We'll show the form and let the user enter a correct key.
+        if (existing && !hadQueryKey) {
           const url = new URL(window.location.href);
           url.pathname = targetPath;
           url.searchParams.set("key", existing);
@@ -220,7 +238,12 @@ function guardedPage(req, res, fileName) {
         const form = document.getElementById("authForm");
         const input = document.getElementById("demoKey");
         const err = document.getElementById("authError");
+        if (existing) input.value = existing;
         input.focus();
+
+        if (hadQueryKey) {
+          err.textContent = "That demo key didn't work. Please try again.";
+        }
 
         form.addEventListener("submit", function(e){
           e.preventDefault();
@@ -234,6 +257,7 @@ function guardedPage(req, res, fileName) {
           const url = new URL(window.location.href);
           url.pathname = targetPath;
           url.searchParams.set("key", key);
+          url.searchParams.delete("reset");
           window.location.replace(url.toString());
         });
       })();
