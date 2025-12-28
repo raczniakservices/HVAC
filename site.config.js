@@ -8,10 +8,11 @@ export const SITE_CONFIG = {
   primaryCity: "Baltimore, MD",
   serviceAreas: ["Baltimore", "Towson", "Catonsville", "Parkville", "Dundalk", "Surrounding areas"],
 
-  // Branding images (add files under ./assets/brand/)
-  logoUrl: "./assets/brand/logo.jpg",
-  ratingBannerUrl: "./assets/brand/rating-banner.jpg",
-  satisfactionSealUrl: "./assets/brand/satisfaction-seal.jpg",
+  // Branding images (add files under /assets/brand/)
+  // Use absolute paths so assets load correctly on all routes (e.g., /dashboard), and add a small cache-buster.
+  logoUrl: "/assets/brand/logo.jpg?v=20251228",
+  ratingBannerUrl: "/assets/brand/rating-banner.jpg?v=20251228",
+  satisfactionSealUrl: "/assets/brand/satisfaction-seal.jpg?v=20251228",
 
   // Optional hero / about photos (leave blank if not used)
   heroImageUrl: "",
