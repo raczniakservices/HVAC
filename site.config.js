@@ -12,6 +12,8 @@ export const SITE_CONFIG = {
   logoUrl: "./assets/brand/logo.png",
   heroImageUrl: "./assets/brand/hero.jpg",
   aboutImageUrl: "./assets/brand/about.jpg",
+  ratingBannerUrl: "./assets/brand/rating-banner.png",
+  satisfactionSealUrl: "./assets/brand/satisfaction-seal.png",
 
   services: [
     { title: "AC Repair", desc: "Restore cooling fast with clear options and upfront approval.", iconUrl: "./assets/brand/icon-ac.png", iconAlt: "AC" },

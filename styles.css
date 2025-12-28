@@ -236,6 +236,23 @@ button:hover,a.btn:hover{transform:translateY(-1px);opacity:1}
   color:var(--ok);
   flex:0 0 22px;
 }
+
+.brand-badges{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin:0 0 12px;
+}
+.brand-badges__rating{
+  height:34px;
+  width:auto;
+  max-width:100%;
+  display:block;
+  border-radius:12px;
+  border:1px solid rgba(226,232,240,.9);
+  background:rgba(255,255,255,.75);
+  padding:6px 10px;
+}
 .hero__cta{
   display:flex;
   gap:10px;
@@ -471,11 +488,21 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   overflow:hidden;
   background:var(--bg);
   box-shadow:var(--shadow);
+  position:relative;
 }
 .about__img{
   width:100%;
   height:auto;
   display:block;
+}
+.about__seal{
+  position:absolute;
+  left:12px;
+  bottom:12px;
+  width:min(140px, 40%);
+  height:auto;
+  display:block;
+  filter:drop-shadow(0 10px 24px rgba(2,6,23,.20));
 }
 .service-name{font-weight:900}
 
