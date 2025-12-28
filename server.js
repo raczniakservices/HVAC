@@ -98,6 +98,20 @@ function normalizeCallerNumber(raw) {
   return String(raw || "").trim();
 }
 
+function digitsOnly(s) {
+  return String(s || "").replace(/[^\d]/g, "");
+}
+
+function isSamePhoneNumber(a, b) {
+  const da = digitsOnly(a);
+  const db = digitsOnly(b);
+  if (!da || !db) return false;
+  // Compare last 10 digits (US-centric; good enough for our demo/testing)
+  const ta = da.length > 10 ? da.slice(-10) : da;
+  const tb = db.length > 10 ? db.slice(-10) : db;
+  return ta === tb;
+}
+
 function isValidStatus(s) {
   return s === "missed" || s === "answered";
 }
@@ -477,13 +491,27 @@ app.post("/twilio/voice", requireTwilioAuth, (req, res) => {
 
   // If you want a “real” demo: forward the call to a real phone number.
   if (TWILIO_FORWARD_TO) {
+    // Avoid the confusing test case where you call the Twilio number from the same phone you're forwarding to.
+    // In that scenario the forward leg usually goes to voicemail and you hear a PIN prompt.
+    if (isSamePhoneNumber(from, TWILIO_FORWARD_TO)) {
+      return res
+        .type("text/xml")
+        .send(
+          twiml(
+            "<Say>Please call from a different phone to test forwarding. Goodbye.</Say><Hangup/>"
+          )
+        );
+    }
+
     // Provide a status callback so we can update answered/missed based on final status.
     const statusCb = `${req.protocol}://${req.get("host")}/twilio/status`;
     return res
       .type("text/xml")
       .send(
         twiml(
-          `<Dial action="${escapeXml(statusCb)}" method="POST" statusCallback="${escapeXml(
+          `<Dial answerOnBridge="true" timeout="20" action="${escapeXml(
+            statusCb
+          )}" method="POST" statusCallback="${escapeXml(
             statusCb
           )}" statusCallbackMethod="POST" statusCallbackEvent="initiated ringing answered completed">${escapeXml(
             TWILIO_FORWARD_TO
