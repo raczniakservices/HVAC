@@ -727,7 +727,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 
 .outcome-select{
   width:100%;
-  min-width:140px;
+  min-width:120px;
   padding:8px 10px;
   border-radius:12px;
   font-weight:800;
@@ -768,14 +768,16 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   position:sticky;
   top:0;
 }
-.table thead th:nth-child(1) { width: 10%; }
-.table thead th:nth-child(2) { width: 9%; }
-.table thead th:nth-child(3) { width: 10%; }
-.table thead th:nth-child(4) { width: 10%; }
-.table thead th:nth-child(5) { width: 11%; }
-.table thead th:nth-child(6) { width: 12%; }
-.table thead th:nth-child(7) { width: 26%; }
-.table thead th:nth-child(8) { width: 12%; }
+/* Dashboard table column sizing (9 columns after adding "Call length") */
+.table thead th:nth-child(1) { width: 14%; }  /* Time */
+.table thead th:nth-child(2) { width: 14%; }  /* Caller */
+.table thead th:nth-child(3) { width: 110px; }/* Status */
+.table thead th:nth-child(4) { width: 105px; }/* Call length */
+.table thead th:nth-child(5) { width: 110px; }/* Type */
+.table thead th:nth-child(6) { width: 110px; }/* Response time */
+.table thead th:nth-child(7) { width: 95px; } /* Followed up */
+.table thead th:nth-child(8) { width: auto; } /* Outcome (flex) */
+.table thead th:nth-child(9) { width: 110px; }/* Actions */
 .table tbody td{
   padding:12px 10px;
   border-bottom:1px solid rgba(226,232,240,.7);
@@ -783,6 +785,21 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   vertical-align:top;
   word-break:break-word;
   overflow:hidden;
+}
+.table tbody td:nth-child(3),
+.table tbody td:nth-child(4),
+.table tbody td:nth-child(5),
+.table tbody td:nth-child(6),
+.table tbody td:nth-child(7){
+  word-break:normal;
+}
+.table tbody td:nth-child(7){
+  white-space:nowrap;
+}
+.table tbody td:nth-child(7),
+.table tbody td:nth-child(8){
+  padding-left:8px;
+  padding-right:8px;
 }
 .table tbody tr:last-child td{border-bottom:none}
 .table tbody tr.row-success{
@@ -837,6 +854,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border:1px solid var(--line);
   font-size:12px;
   font-weight:900;
+  white-space:nowrap;
 }
 .status-badge--missed{
   border-color:rgba(220,38,38,.25);
