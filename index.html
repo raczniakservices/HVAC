@@ -4,22 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b5fff" />
-    <title>HVAC Service Demo | Emergency and Weekend Calls</title>
+    <title>HVAC Service</title>
     <meta
       name="description"
-      content="Single-page HVAC demo designed to convert Google traffic into calls and service requests. Emergency and weekend calls, fast response, low-friction form."
+      content="Licensed HVAC service for repairs, maintenance, and emergency calls. Call now or request service in under a minute."
     />
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="HVAC Service Demo | Emergency and Weekend Calls" />
-    <meta property="og:description" content="High-converting HVAC landing page demo. See how low-friction design turns Google traffic into booked jobs." />
+    <meta property="og:title" content="HVAC Service" />
+    <meta property="og:description" content="Licensed HVAC service for repairs, maintenance, and emergency calls. Call now or request service in under a minute." />
     <meta property="og:image" content="./assets/hvac-hero.svg" />
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="HVAC Service Demo | Emergency and Weekend Calls" />
-    <meta property="twitter:description" content="High-converting HVAC landing page demo. See how low-friction design turns Google traffic into booked jobs." />
+    <meta property="twitter:title" content="HVAC Service" />
+    <meta property="twitter:description" content="Licensed HVAC service for repairs, maintenance, and emergency calls. Call now or request service in under a minute." />
     
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E❄️%3C/text%3E%3C/svg%3E" />
@@ -36,69 +36,7 @@
     
     <link rel="stylesheet" href="./styles.css" />
 
-    <!-- DEMO MODE: Optional rewrite of tel: links (desktop demos) -->
-    <script>
-      (function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get("demo") !== "1") return;
-        // If demoCall=tel is set, keep tel: links intact (lets mobile/desktop use the real dial action)
-        if (urlParams.get("demoCall") === "tel") return;
-
-        // Run as soon as the DOM is interactive (before DOMContentLoaded)
-        function rewriteTelLinks() {
-          document.querySelectorAll('a[href^="tel:"]').forEach(function(a) {
-            if (a.dataset.demoTelRewritten === "1") return;
-            const original = a.getAttribute("href") || "";
-            a.dataset.tel = original;
-            a.dataset.demoTelRewritten = "1";
-            a.setAttribute("href", "#");
-            a.setAttribute("role", "button");
-          });
-        }
-
-        if (document.readyState === "loading") {
-          document.addEventListener("DOMContentLoaded", rewriteTelLinks);
-        } else {
-          rewriteTelLinks();
-        }
-
-        // Also run immediately if script is in <head>
-        if (document.body) {
-          rewriteTelLinks();
-        }
-      })();
-    </script>
-
-    <!-- JSON-LD LocalBusiness schema (demo data) -->
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "LocalBusiness",
-        "name": "Local HVAC Service (Demo)",
-        "description": "Demo landing page concept for emergency HVAC repair, maintenance, and weekend calls in your local area.",
-        "telephone": "+1-443-665-0603",
-        "email": "service@example.com",
-        "areaServed": [
-          "Your City",
-          "Surrounding Areas"
-        ],
-        "url": "http://localhost",
-        "address": {
-          "@type": "PostalAddress",
-          "addressLocality": "Your City",
-          "addressRegion": "Your State",
-          "addressCountry": "US"
-        },
-        "openingHoursSpecification": [
-          {
-            "@type": "OpeningHoursSpecification",
-            "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-            "opens": "00:00",
-            "closes": "23:59"
-          }
-        ]
-      }
-    </script>
+    <!-- LocalBusiness schema is injected from site.config.js -->
   </head>
 
   <body>
@@ -106,7 +44,7 @@
 
     <header class="topbar" role="banner">
       <div class="container topbar__inner">
-        <div class="brand" aria-label="Local HVAC service demo">
+        <div class="brand" aria-label="HVAC service">
           <div class="brand__logo" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path
@@ -117,13 +55,13 @@
             </svg>
           </div>
           <div class="brand__text">
-            <div class="brand__name">Local HVAC Service Demo</div>
-            <div class="brand__tag">Emergency and weekend calls</div>
+            <div class="brand__name" data-bind="companyName">HVAC Service</div>
+            <div class="brand__tag" data-bind="tagline">Repairs, maintenance, and emergency service</div>
           </div>
         </div>
 
         <div class="topbar__right">
-          <a class="phone-link" href="tel:+14436650603" aria-label="Call (443) 665-0603">
+          <a class="phone-link" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call">
             <span class="phone-link__icon" aria-hidden="true">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path
@@ -134,7 +72,7 @@
                 />
               </svg>
             </span>
-            <span class="phone-link__text">(443) 665-0603</span>
+            <span class="phone-link__text" data-bind="phoneDisplay">(000) 000-0000</span>
           </a>
         </div>
       </div>
@@ -145,11 +83,7 @@
         <div class="container hero__grid">
           <div class="hero__copy">
             <div class="badge-row">
-              <span class="badge" data-aos="fade-up" data-aos-delay="100">
-                <span class="badge__dot" aria-hidden="true"></span>
-                Google traffic ready (demo)
-              </span>
-              <span class="badge badge--muted" data-aos="fade-up" data-aos-delay="200">Licensed &amp; insured</span>
+              <span class="badge badge--muted" data-aos="fade-up" data-aos-delay="100">Licensed &amp; insured</span>
               <span class="badge badge--urgent" data-aos="fade-up" data-aos-delay="300">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="10"/>
@@ -159,104 +93,31 @@
               </span>
             </div>
 
-            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service This Weekend? Get Scheduled in Under 60 Seconds.</h1>
+            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service Today? Get Scheduled in Under 60 Seconds.</h1>
             <p class="hero__subhead" data-aos="fade-up" data-aos-delay="500">
-              Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls in your area.
+              Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls.
             </p>
 
-            <ul class="trust-bullets" aria-label="Trust signals" data-aos="fade-up" data-aos-delay="600">
-              <li>
-                <span class="check" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                Licensed &amp; insured
-              </li>
-              <li>
-                <span class="check" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                Serving your city &amp; surrounding areas
-              </li>
-              <li>
-                <span class="check" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                Emergency &amp; weekend calls available
-              </li>
-              <li>
-                <span class="check" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                Fast response times
-              </li>
-              <li>
-                <span class="check" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M20 6L9 17l-5-5"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                5-star rated local HVAC service (example)
-              </li>
-            </ul>
+            <div class="trust-strip" aria-label="Trust signals" data-aos="fade-up" data-aos-delay="600" id="trustStrip">
+              <!-- populated from config -->
+            </div>
 
             <div class="hero__cta" data-aos="fade-up" data-aos-delay="700">
               <a class="btn btn--primary btn--lg" href="#request" data-scroll="request">
                 Request Service Now
               </a>
-              <a class="btn btn--secondary btn--lg" href="tel:+14436650603" aria-label="Call now (443) 665-0603">
+              <a class="btn btn--secondary btn--lg" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call now">
                 Call Now
-                <span class="btn__sub">(443) 665-0603</span>
+                <span class="btn__sub" data-bind="phoneDisplay">(000) 000-0000</span>
               </a>
             </div>
-
-            <p class="micro-note" data-aos="fade-up" data-aos-delay="800">
-              This is a demo. In the real world, missed-call text-back can recover leads that would otherwise bounce.
-            </p>
           </div>
 
           <aside class="hero__form" aria-label="Request service form" data-aos="fade-left" data-aos-delay="500">
             <div class="form-card" id="request">
               <div class="form-card__head">
                 <h2 class="form-card__title">Request Service</h2>
-                <p class="form-card__subtitle">Low friction. Just the details needed to call you back.</p>
+                  <p class="form-card__subtitle">Just the details needed to reach you and confirm scheduling.</p>
               </div>
 
               <form id="serviceForm" novalidate>
@@ -316,13 +177,13 @@
 
                 <p class="form-footnote">
                   Prefer a faster response? Call:
-                  <a href="tel:+14436650603">(443) 665-0603</a>
+                  <a data-bind-tel="phoneTel" href="tel:+10000000000"><span data-bind="phoneDisplay">(000) 000-0000</span></a>
                 </p>
 
                 <div class="form-success" id="formSuccess" hidden>
                   <div class="form-success__title">Thanks.</div>
                   <div class="form-success__body">
-                    A technician will contact you shortly. This is a demo, so timing is not guaranteed.
+                    A technician will contact you shortly.
                   </div>
                 </div>
               </form>
@@ -336,66 +197,20 @@
         <div class="container">
           <div class="section__head">
             <h2 data-aos="fade-up">Services</h2>
-            <p class="muted" data-aos="fade-up" data-aos-delay="100">Keep it simple. These are the job types that turn clicks into calls.</p>
+            <p class="muted" data-aos="fade-up" data-aos-delay="100">The most common service calls we handle every week.</p>
           </div>
 
-          <div class="cards cards--4">
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="100">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">❄</span>
-                <div class="service-name">AC repair</div>
-              </div>
-              <p class="card__body">Get cooling back fast with practical fixes and clear next steps.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="150">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">🔥</span>
-                <div class="service-name">Furnace repair</div>
-              </div>
-              <p class="card__body">Diagnose no heat and safety issues, then quote before work begins.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="200">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">♨</span>
-                <div class="service-name">Heat pumps</div>
-              </div>
-              <p class="card__body">Repair and replacement guidance that matches your home and budget.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="250">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">🧰</span>
-                <div class="service-name">Maintenance</div>
-              </div>
-              <p class="card__body">Tune-ups that reduce breakdowns and improve comfort through the season.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="100">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">🎛</span>
-                <div class="service-name">Thermostat install</div>
-              </div>
-              <p class="card__body">Smart thermostat setup and wiring fixes so schedules actually work.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="150">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">🌀</span>
-                <div class="service-name">Ductwork</div>
-              </div>
-              <p class="card__body">Airflow problems, leaks, and comfort balancing without guesswork.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="200">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">🌬</span>
-                <div class="service-name">Indoor air quality</div>
-              </div>
-              <p class="card__body">Filtration and humidity improvements for cleaner, more comfortable air.</p>
-            </article>
-            <article class="card card--service" data-aos="fade-up" data-aos-delay="250">
-              <div class="service-line">
-                <span class="service-icon" aria-hidden="true">⚡</span>
-                <div class="service-name">Emergency service</div>
-              </div>
-              <p class="card__body">Urgent response path designed to turn clicks into calls immediately.</p>
-            </article>
+          <div class="cards cards--4" id="servicesGrid"></div>
+        </div>
+      </section>
+
+      <section class="section section--tight" aria-label="About">
+        <div class="container">
+          <div class="section__head">
+            <h2 data-aos="fade-up">About</h2>
+            <p class="muted" data-aos="fade-up" data-aos-delay="100" data-bind="about">
+              Locally owned HVAC team. Licensed, insured, and focused on fast, clear communication.
+            </p>
           </div>
         </div>
       </section>
@@ -404,30 +219,14 @@
         <div class="container">
           <div class="section__head">
             <h2 data-aos="fade-up">What Homeowners Say</h2>
-            <p class="muted" data-aos="fade-up" data-aos-delay="100">Real results from local service calls (demo examples)</p>
+            <p class="muted" data-aos="fade-up" data-aos-delay="100">Recent feedback from local homeowners</p>
           </div>
 
-          <div class="testimonials">
-            <article class="testimonial" data-aos="fade-up" data-aos-delay="100">
-              <div class="stars" aria-label="5 stars">★★★★★</div>
-              <p class="testimonial__text">"Called Saturday morning, tech was here by noon. Fixed our AC before the heat wave hit. Straightforward pricing, no surprises."</p>
-              <div class="testimonial__author">— Sarah M., Baltimore</div>
-            </article>
-            <article class="testimonial" data-aos="fade-up" data-aos-delay="200">
-              <div class="stars" aria-label="5 stars">★★★★★</div>
-              <p class="testimonial__text">"Filled out the form at 11 PM, got a call back first thing in the morning. Had heat again by that afternoon. Exactly what we needed."</p>
-              <div class="testimonial__author">— Mike T., Towson</div>
-            </article>
-            <article class="testimonial" data-aos="fade-up" data-aos-delay="300">
-              <div class="stars" aria-label="5 stars">★★★★★</div>
-              <p class="testimonial__text">"No run-around, just showed up, diagnosed the problem, told me the options. Fixed it same day. This is how HVAC service should work."</p>
-              <div class="testimonial__author">— Jennifer K., Catonsville</div>
-            </article>
-          </div>
+          <div class="testimonials" id="testimonialsGrid"></div>
         </div>
       </section>
 
-      <section class="section section--alt" aria-label="Demo notes for HVAC owners">
+      <section class="section section--alt" aria-label="What happens next">
         <div class="container">
           <div class="section__head">
             <h2>What happens next</h2>
@@ -451,32 +250,6 @@
               <div class="step__body">We fix the issue and document the work, including any warranty details.</div>
             </div>
           </div>
-
-          <details class="faq__item owner-notes">
-            <summary>Demo note (for HVAC owners): why this page converts</summary>
-            <div class="faq__body owner-notes__body">
-              <p class="muted owner-notes__intro">
-                This section is here to help you explain the strategy on video. On a live customer page, you can hide or remove it.
-              </p>
-
-              <div class="bullets">
-                <div class="bullet">
-                  <div class="bullet__title">One clear action</div>
-                  <div class="bullet__body">No menus. No dead ends. The visitor can only call or request service.</div>
-                </div>
-                <div class="bullet">
-                  <div class="bullet__title">Captures missed calls</div>
-                  <div class="bullet__body">Some people will not call. The form captures those leads anyway, especially on mobile.</div>
-                </div>
-                <div class="bullet">
-                  <div class="bullet__title">Matches high-intent searches</div>
-                  <div class="bullet__body">Issue dropdown + service area cues reduce bounce from “no heat / no AC / emergency” traffic.</div>
-                </div>
-              </div>
-
-              <p class="micro-note">Less friction equals more booked jobs from the same traffic.</p>
-            </div>
-          </details>
         </div>
       </section>
 
@@ -486,16 +259,9 @@
         <div class="container">
           <div class="section__head">
             <h2>Service Areas</h2>
-            <p class="muted">Serving your city and surrounding areas</p>
+            <p class="muted" data-bind="primaryCity">Serving your area</p>
           </div>
-          <div class="chips" role="list">
-            <span class="chip" role="listitem">Downtown</span>
-            <span class="chip" role="listitem">West side</span>
-            <span class="chip" role="listitem">East side</span>
-            <span class="chip" role="listitem">North side</span>
-            <span class="chip" role="listitem">South side</span>
-            <span class="chip" role="listitem">Surrounding areas</span>
-          </div>
+          <div class="chips" role="list" id="serviceAreasChips"></div>
         </div>
       </section>
 
@@ -510,13 +276,13 @@
             <details class="faq__item">
               <summary>Do you offer emergency HVAC repair?</summary>
               <div class="faq__body">
-                Yes. Call the number on this page. If we cannot pick up, leave a voicemail and request a text-back.
+                Yes. Call the number on this page for the fastest response. If we miss you, leave a voicemail and we’ll follow up as quickly as possible.
               </div>
             </details>
             <details class="faq__item">
               <summary>Can you come out today?</summary>
               <div class="faq__body">
-                Same-day availability depends on the schedule and parts. We will confirm the soonest slot by phone or text.
+                Same-day availability depends on the schedule and parts. We’ll confirm the soonest available appointment by phone or text.
               </div>
             </details>
             <details class="faq__item">
@@ -550,95 +316,12 @@
       <section class="cta-band" aria-label="Final call to action">
         <div class="container cta-band__inner">
           <div class="cta-band__copy">
-            <h2>Need service today?</h2>
-            <p class="muted">Call now or send the request form and we will confirm quickly.</p>
+            <h2>Ready to get scheduled?</h2>
+            <p class="muted">Call now for the fastest response, or send a request and we’ll reach out shortly.</p>
           </div>
           <div class="cta-band__actions">
-            <a class="btn btn--primary btn--lg" href="tel:+14436650603">Call Now</a>
+            <a class="btn btn--primary btn--lg" data-bind-tel="phoneTel" href="tel:+10000000000">Call Now</a>
             <a class="btn btn--secondary btn--lg" href="#request" data-scroll="request">Request Service</a>
-          </div>
-        </div>
-      </section>
-
-      <section class="section section--tight" aria-label="Request service form (bottom)">
-        <div class="container">
-          <div class="section__head">
-            <h2>Request Service</h2>
-            <p class="muted">Same form, again. Less scrolling. Less friction.</p>
-          </div>
-
-          <div class="form-card form-card--wide" id="requestBottom">
-            <div class="form-card__head">
-              <h3 class="form-card__title">Have a tech contact you</h3>
-              <p class="form-card__subtitle">This is a demo. Timing is not guaranteed.</p>
-            </div>
-            <form id="serviceForm2" novalidate>
-              <div class="form-grid">
-                <div class="field">
-                  <label for="firstName2">First name</label>
-                  <input id="firstName2" name="firstName" autocomplete="given-name" inputmode="text" required />
-                  <p class="error" data-error-for="firstName" aria-live="polite"></p>
-                </div>
-
-                <div class="field">
-                  <label for="phone2">Phone</label>
-                  <input
-                    id="phone2"
-                    name="phone"
-                    autocomplete="tel"
-                    inputmode="tel"
-                    placeholder="(443) 555-1234"
-                    required
-                  />
-                  <p class="error" data-error-for="phone" aria-live="polite"></p>
-                </div>
-
-                <div class="field">
-                  <label for="cityOrZip2">City or ZIP</label>
-                  <input id="cityOrZip2" name="cityOrZip" autocomplete="postal-code" required />
-                  <p class="error" data-error-for="cityOrZip" aria-live="polite"></p>
-                </div>
-
-                <div class="field">
-                  <label for="issue2">Issue type</label>
-                  <select id="issue2" name="issue" required>
-                    <option value="">Select an issue</option>
-                    <option>No heat</option>
-                    <option>No AC</option>
-                    <option>System making noise</option>
-                    <option>Maintenance</option>
-                    <option>Emergency</option>
-                  </select>
-                  <p class="error" data-error-for="issue" aria-live="polite"></p>
-                </div>
-
-                <div class="field field--full">
-                  <label for="timeframe2">Preferred timeframe</label>
-                  <select id="timeframe2" name="timeframe" required>
-                    <option value="">Select a timeframe</option>
-                    <option>ASAP</option>
-                    <option>Today</option>
-                    <option>This weekend</option>
-                    <option>Flexible</option>
-                  </select>
-                  <p class="error" data-error-for="timeframe" aria-live="polite"></p>
-                </div>
-              </div>
-
-              <button class="btn btn--primary btn--block" type="submit">Get Scheduled</button>
-
-              <p class="form-footnote">
-                Prefer to call? Tap:
-                <a href="tel:+14436650603">(443) 665-0603</a>
-              </p>
-
-              <div class="form-success" id="formSuccess2" hidden>
-                <div class="form-success__title">Thanks.</div>
-                <div class="form-success__body">
-                  A technician will contact you shortly. This is a demo, so timing is not guaranteed.
-                </div>
-              </div>
-            </form>
           </div>
         </div>
       </section>
@@ -647,31 +330,24 @@
     <footer class="footer" aria-label="Footer">
       <div class="container footer__grid">
         <div>
-          <div class="footer__brand">Local HVAC Service Demo</div>
+          <div class="footer__brand" data-bind="companyName">HVAC Service</div>
           <div class="footer__line">
-            Phone: <a href="tel:+14436650603">(443) 665-0603</a>
+            Phone: <a data-bind-tel="phoneTel" href="tel:+10000000000"><span data-bind="phoneDisplay">(000) 000-0000</span></a>
           </div>
-          <div class="footer__line">Service area: Your city and surrounding areas</div>
+          <div class="footer__line">Service area: <span data-bind="primaryCity">Your area</span></div>
         </div>
         <div>
           <div class="footer__label">Hours</div>
-          <div class="footer__line">Emergency and weekend calls (demo)</div>
-          <div class="footer__line muted">
-            Demo landing page concept. Not an active company.
-          </div>
-          <div class="footer__line muted" id="demoFooterLinks" hidden>
-            Demo:
-            <a id="demoLink" href="/demo">/demo</a>
-            ·
-            <a id="dashboardLink" href="/dashboard">/dashboard</a>
-          </div>
+          <div class="footer__line" data-bind="hours">Mon–Sun: 8am–8pm</div>
+          <div class="footer__line muted" data-bind="emergencyLine">Emergency service available</div>
+          <div class="footer__line muted" data-bind="licenseNumber" data-hide-empty="1"></div>
         </div>
       </div>
     </footer>
 
     <!-- Sticky mobile action bar -->
     <div class="mobile-bar" role="region" aria-label="Quick actions">
-      <a class="mobile-bar__btn mobile-bar__btn--call" href="tel:+14436650603">
+      <a class="mobile-bar__btn mobile-bar__btn--call" data-bind-tel="phoneTel" href="tel:+10000000000">
         Call Now
       </a>
       <button class="mobile-bar__btn mobile-bar__btn--form" type="button" data-scroll="request">
@@ -682,16 +358,16 @@
     <!-- AOS Animation Library -->
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
     
-    <!-- Google Analytics Placeholder (Replace UA-XXXXX-Y with your tracking ID) -->
+    <!-- Google Analytics Placeholder (replace UA-XXXXX-Y with your tracking ID) -->
     <script>
-      // Google Analytics Demo Placeholder
+      // Google Analytics Placeholder
       // window.dataLayer = window.dataLayer || [];
       // function gtag(){dataLayer.push(arguments);}
       // gtag('js', new Date());
       // gtag('config', 'UA-XXXXX-Y');
     </script>
 
-    <script src="./app.js" defer></script>
+    <script src="./app.js" type="module"></script>
   </body>
 </html>
 

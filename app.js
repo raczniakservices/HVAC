@@ -1,18 +1,193 @@
-/*
-  DEMO FORM SETUP
+import { SITE_CONFIG } from "./site.config.js";
 
-  Option A (recommended): Formspree
-  - Create a Formspree form and paste the endpoint URL below.
-  - Example: https://formspree.io/f/abcdwxyz
-
-  Option B: No backend (default demo behavior)
-  - Leave FORM_ENDPOINT empty.
-  - On submit, we show a success message and log fields to console.
-*/
-const FORM_ENDPOINT = ""; // <-- paste your Formspree endpoint here
+/**
+ * Optional: Formspree endpoint for inbox-style form handling.
+ * If left empty, the form still shows a success state and we also POST to /api/landing/form (if available).
+ */
+const FORM_ENDPOINT = "";
 
 function $(sel, root = document) {
   return root.querySelector(sel);
+}
+
+function setText(el, value) {
+  if (!el) return;
+  el.textContent = String(value ?? "");
+}
+
+function applyConfigToDom() {
+  // Theme
+  try {
+    const root = document.documentElement;
+    if (SITE_CONFIG?.theme?.primaryColor) root.style.setProperty("--accent", SITE_CONFIG.theme.primaryColor);
+    if (SITE_CONFIG?.theme?.accentColor) root.style.setProperty("--accent2", SITE_CONFIG.theme.accentColor);
+  } catch {
+    // ignore
+  }
+
+  // Title + basic metas
+  try {
+    const baseTitle = `${SITE_CONFIG.companyName} | HVAC Service`;
+    document.title = baseTitle;
+    const desc = `Licensed HVAC service in ${SITE_CONFIG.primaryCity}. Call now or request service in under a minute.`;
+
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute("content", desc);
+
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute("content", baseTitle);
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute("content", desc);
+
+    const twTitle = document.querySelector('meta[property="twitter:title"]');
+    if (twTitle) twTitle.setAttribute("content", baseTitle);
+    const twDesc = document.querySelector('meta[property="twitter:description"]');
+    if (twDesc) twDesc.setAttribute("content", desc);
+  } catch {
+    // ignore
+  }
+
+  // Text bindings (+ optional hide when blank)
+  document.querySelectorAll("[data-bind]").forEach((el) => {
+    const key = el.getAttribute("data-bind");
+    if (!key) return;
+    const val = SITE_CONFIG[key];
+    setText(el, val);
+    if (el.getAttribute("data-hide-empty") === "1") {
+      const isEmpty = val == null || String(val).trim().length === 0;
+      el.hidden = isEmpty;
+    }
+  });
+
+  // Phone bindings
+  document.querySelectorAll("[data-bind-tel]").forEach((el) => {
+    const telKey = el.getAttribute("data-bind-tel") || "phoneTel";
+    const tel = SITE_CONFIG[telKey] || SITE_CONFIG.phoneTel;
+    if (!tel) return;
+    if (el.tagName === "A") el.setAttribute("href", `tel:${tel}`);
+    el.setAttribute("aria-label", `Call ${SITE_CONFIG.phoneDisplay || ""}`.trim());
+  });
+
+  // Optional hero background image (off by default)
+  try {
+    const hero = document.querySelector(".hero");
+    const enabled = Boolean(SITE_CONFIG.enableHeroImage) && String(SITE_CONFIG.heroBackgroundImageUrl || "").trim().length > 0;
+    if (hero) {
+      hero.classList.toggle("hero--image", enabled);
+      if (enabled) {
+        document.documentElement.style.setProperty("--hero-image", `url("${SITE_CONFIG.heroBackgroundImageUrl}")`);
+      } else {
+        document.documentElement.style.removeProperty("--hero-image");
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // Trust strip
+  const trustStrip = document.getElementById("trustStrip");
+  if (trustStrip) {
+    trustStrip.innerHTML = "";
+    (SITE_CONFIG.trustStrip || []).slice(0, 4).forEach((t) => {
+      const item = document.createElement("div");
+      item.className = "trust-strip__item";
+      item.innerHTML = `
+        <span class="trust-strip__icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <span class="trust-strip__text"></span>
+      `;
+      const textEl = item.querySelector(".trust-strip__text");
+      setText(textEl, t);
+      trustStrip.appendChild(item);
+    });
+  }
+
+  // Services
+  const servicesGrid = document.getElementById("servicesGrid");
+  if (servicesGrid) {
+    servicesGrid.innerHTML = "";
+    (SITE_CONFIG.services || []).forEach((svc, idx) => {
+      const article = document.createElement("article");
+      article.className = "card card--service";
+      article.setAttribute("data-aos", "fade-up");
+      article.setAttribute("data-aos-delay", String(80 + Math.min(idx * 40, 240)));
+      article.innerHTML = `
+        <div class="service-line">
+          <span class="service-icon" aria-hidden="true"></span>
+          <div class="service-name"></div>
+        </div>
+        <p class="card__body"></p>
+      `;
+      setText(article.querySelector(".service-icon"), svc.icon || "•");
+      setText(article.querySelector(".service-name"), svc.title || "");
+      setText(article.querySelector(".card__body"), svc.desc || "");
+      servicesGrid.appendChild(article);
+    });
+  }
+
+  // Testimonials
+  const testimonialsGrid = document.getElementById("testimonialsGrid");
+  if (testimonialsGrid) {
+    testimonialsGrid.innerHTML = "";
+    (SITE_CONFIG.testimonials || []).slice(0, 3).forEach((t, idx) => {
+      const stars = Math.max(1, Math.min(5, Number(t.stars || 5)));
+      const article = document.createElement("article");
+      article.className = "testimonial";
+      article.setAttribute("data-aos", "fade-up");
+      article.setAttribute("data-aos-delay", String(100 + idx * 100));
+      article.innerHTML = `
+        <div class="testimonial__meta">
+          <div class="stars" aria-label="${stars} stars">${"★".repeat(stars)}${"☆".repeat(5 - stars)}</div>
+          <div class="verified">Verified homeowner</div>
+        </div>
+        <p class="testimonial__text"></p>
+        <div class="testimonial__author"></div>
+      `;
+      setText(article.querySelector(".testimonial__text"), `"${t.text || ""}"`);
+      setText(article.querySelector(".testimonial__author"), `— ${t.name || ""}, ${t.city || ""}`.trim());
+      testimonialsGrid.appendChild(article);
+    });
+  }
+
+  // Service areas
+  const chips = document.getElementById("serviceAreasChips");
+  if (chips) {
+    chips.innerHTML = "";
+    (SITE_CONFIG.serviceAreas || []).forEach((a) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.setAttribute("role", "listitem");
+      setText(chip, a);
+      chips.appendChild(chip);
+    });
+  }
+
+  // JSON-LD schema
+  try {
+    const existing = document.getElementById("localBusinessSchema");
+    if (existing) existing.remove();
+
+    const schema = {
+      "@context": "https://schema.org",
+      "@type": "HVACBusiness",
+      name: SITE_CONFIG.companyName,
+      description: `Licensed HVAC service in ${SITE_CONFIG.primaryCity}.`,
+      telephone: SITE_CONFIG.phoneTel,
+      areaServed: SITE_CONFIG.serviceAreas,
+      url: window.location.origin,
+    };
+
+    const s = document.createElement("script");
+    s.type = "application/ld+json";
+    s.id = "localBusinessSchema";
+    s.textContent = JSON.stringify(schema);
+    document.head.appendChild(s);
+  } catch {
+    // ignore
+  }
 }
 
 function getField(form, name) {
@@ -46,11 +221,15 @@ function setError(form, name, message) {
   if (errorEl) errorEl.textContent = message || "";
 }
 
+function clearErrors(form) {
+  ["firstName", "phone", "cityOrZip", "issue", "timeframe"].forEach((name) => setError(form, name, ""));
+}
+
 function normalizePhone(raw) {
   return String(raw || "").replace(/[^\d+]/g, "").trim();
 }
 
-function validate(form) {
+function validate(form, { showErrors } = { showErrors: false }) {
   const firstName = getValue(form, "firstName");
   const phone = getValue(form, "phone");
   const cityOrZip = getValue(form, "cityOrZip");
@@ -59,38 +238,40 @@ function validate(form) {
 
   let ok = true;
 
-  setError(form, "firstName", "");
-  setError(form, "phone", "");
-  setError(form, "cityOrZip", "");
-  setError(form, "issue", "");
-  setError(form, "timeframe", "");
+  if (showErrors) {
+    setError(form, "firstName", "");
+    setError(form, "phone", "");
+    setError(form, "cityOrZip", "");
+    setError(form, "issue", "");
+    setError(form, "timeframe", "");
+  }
 
   if (!firstName) {
-    setError(form, "firstName", "Please enter your first name.");
+    if (showErrors) setError(form, "firstName", "Please enter your first name.");
     ok = false;
   }
 
   const normalized = normalizePhone(phone);
   if (!phone) {
-    setError(form, "phone", "Please enter a phone number.");
+    if (showErrors) setError(form, "phone", "Please enter a phone number.");
     ok = false;
   } else if (normalized.replace("+", "").length < 10) {
-    setError(form, "phone", "Please enter a valid phone number.");
+    if (showErrors) setError(form, "phone", "Please enter a valid phone number.");
     ok = false;
   }
 
   if (!cityOrZip) {
-    setError(form, "cityOrZip", "Please enter your city or ZIP.");
+    if (showErrors) setError(form, "cityOrZip", "Please enter your city or ZIP.");
     ok = false;
   }
 
   if (!issue) {
-    setError(form, "issue", "Please select an issue.");
+    if (showErrors) setError(form, "issue", "Please select an issue.");
     ok = false;
   }
 
   if (!timeframe) {
-    setError(form, "timeframe", "Please select a timeframe.");
+    if (showErrors) setError(form, "timeframe", "Please select a timeframe.");
     ok = false;
   }
 
@@ -105,9 +286,7 @@ function serialize(form) {
 }
 
 function showSuccess(form) {
-  const success =
-    $("#formSuccess", form) ||
-    $("#formSuccess2", form);
+  const success = $("#formSuccess", form);
   if (success) {
     success.hidden = false;
     success.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -148,268 +327,11 @@ function setupInlineValidation(form) {
   watched.forEach((name) => {
     const field = getField(form, name);
     if (!field) return;
-    field.addEventListener("input", () => validate(form));
-    field.addEventListener("change", () => validate(form));
-    field.addEventListener("blur", () => validate(form));
+    const run = () => validate(form, { showErrors: form.dataset.submitted === "1" });
+    field.addEventListener("input", run);
+    field.addEventListener("change", run);
+    field.addEventListener("blur", run);
   });
-}
-
-function setupDemoFooterLinks() {
-  const el = document.getElementById("demoFooterLinks");
-  const demoLink = document.getElementById("demoLink");
-  const dashboardLink = document.getElementById("dashboardLink");
-  if (!el || !demoLink || !dashboardLink) return;
-
-  const params = new URLSearchParams(window.location.search);
-  const isDemoMode = params.get("demo") === "1";
-  if (!isDemoMode) return;
-
-  el.hidden = false;
-
-  const savedKey = localStorage.getItem("hvac_demo_key") || "";
-  const withKey = (path) => {
-    try {
-      const url = new URL(path, window.location.origin);
-      if (savedKey) url.searchParams.set("key", savedKey);
-      return url.toString();
-    } catch {
-      return path;
-    }
-  };
-
-  demoLink.href = withKey("/demo");
-  dashboardLink.href = withKey("/dashboard");
-}
-
-function isDemoModeEnabled() {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("demo") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function getOrPromptDemoKey() {
-  // If a key is present in the URL, prefer it (and persist it) to avoid prompts.
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = String(params.get("key") || "").trim();
-    if (fromUrl) {
-      localStorage.setItem("hvac_demo_key", fromUrl);
-      try {
-        document.cookie = "demo_key=" + encodeURIComponent(fromUrl) + "; path=/; SameSite=Lax";
-      } catch {
-        // ignore
-      }
-      return fromUrl;
-    }
-  } catch {
-    // ignore
-  }
-
-  const existing = localStorage.getItem("hvac_demo_key") || "";
-  if (existing) return existing;
-  // Only prompt in explicit demo mode so normal visitors aren't bothered.
-  if (!isDemoModeEnabled()) return "";
-  const entered = window.prompt("Enter demo key to log a missed call event (optional):");
-  const key = String(entered || "").trim();
-  if (!key) return "";
-  localStorage.setItem("hvac_demo_key", key);
-  try {
-    document.cookie = "demo_key=" + encodeURIComponent(key) + "; path=/; SameSite=Lax";
-  } catch {
-    // ignore
-  }
-  return key;
-}
-
-function formatE164ForDemo(rawPhone) {
-  // Try to turn common US formats into +1XXXXXXXXXX for the demo.
-  const s = normalizePhone(rawPhone);
-  if (!s) return "";
-  if (s.startsWith("+")) return s;
-  const digits = s.replace(/[^\d]/g, "");
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
-  return digits; // fallback (may still pass validation if length is 7-20)
-}
-
-function ensureToastEl() {
-  let el = document.getElementById("landingToast");
-  if (el) return el;
-  el = document.createElement("div");
-  el.id = "landingToast";
-  el.className = "toast";
-  el.hidden = true;
-  el.setAttribute("role", "status");
-  el.setAttribute("aria-live", "polite");
-  document.body.appendChild(el);
-  return el;
-}
-
-function showLandingToast(message, type = "ok") {
-  const el = ensureToastEl();
-  el.textContent = message;
-  el.dataset.type = type;
-  el.hidden = false;
-  clearTimeout(showLandingToast._t);
-  showLandingToast._t = setTimeout(() => {
-    el.hidden = true;
-  }, 3000);
-}
-
-async function simulateCallEvent({ callerNumber, status, source }) {
-  const key = getOrPromptDemoKey();
-  if (!key) return { ok: false, reason: "no_key" };
-
-  const url = new URL("/api/webhooks/call", window.location.origin);
-  url.searchParams.set("key", key);
-
-  const res = await fetch(url.toString(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-demo-key": key
-    },
-    body: JSON.stringify({
-      callerNumber,
-      status,
-      source: source || "landing_call_click"
-    })
-  });
-
-  if (!res.ok) return { ok: false, reason: "http" };
-  return { ok: true };
-}
-
-function setupDemoCallClickBridge() {
-  // Demo-only: prevent the OS dialer from opening and instead log a call event.
-  // Normal mode (no ?demo=1): phone links behave normally.
-  if (!isDemoModeEnabled()) return;
-  if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
-
-  // Rewrite tel: hrefs immediately so the browser/OS never sees a tel: navigation in demo mode.
-  // We preserve the original in data-tel so styling stays the same.
-  const telLinks = Array.from(document.querySelectorAll('a[href^="tel:"]'));
-  telLinks.forEach((a) => {
-    if (a.dataset && a.dataset.demoTelRewritten === "1") return;
-    const original = a.getAttribute("href") || "";
-    a.dataset.tel = original;
-    a.dataset.demoTelRewritten = "1";
-    // Remove tel: to prevent Windows app picker.
-    a.setAttribute("href", "#");
-    // Optional: make it feel clickable but not “navigate away”
-    a.setAttribute("role", "button");
-  });
-
-  async function handleTelClick(e) {
-    // Allow real dialing in demo mode if user holds Shift.
-    if (e.shiftKey) {
-      // If user explicitly wants to dial, restore tel: for this click.
-      const target = e.target;
-      const link = target && target.closest ? target.closest('a[data-tel]') : null;
-      if (link && link.dataset.tel) {
-        link.setAttribute("href", link.dataset.tel);
-        // Let the browser handle it (will trigger OS picker/dialer)
-        return;
-      }
-      return;
-    }
-
-    const target = e.target;
-    const link = target && target.closest ? target.closest('a[data-tel], a[href^="tel:"]') : null;
-    if (!link) return;
-
-    // Prevent the browser/OS from opening a "phone app" chooser.
-    e.preventDefault();
-    e.stopPropagation();
-    // Some browsers/extensions hook clicks; this helps ensure we "win".
-    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
-
-    // Use last known number for “caller” (set by simulator or landing form), fallback to a stable demo number.
-    const last = localStorage.getItem("hvac_demo_last_number") || "+14105551234";
-    const callerNumber = formatE164ForDemo(last) || "+14105551234";
-    localStorage.setItem("hvac_demo_last_number", callerNumber);
-
-    // Alt-click = answered; normal click = missed (better for this demo)
-    const status = e.altKey ? "answered" : "missed";
-
-    try {
-      const result = await simulateCallEvent({
-        callerNumber,
-        status,
-        source: "landing_call_click"
-      });
-
-      if (!result.ok) {
-        showLandingToast("Could not log call event (check demo key).", "bad");
-        return;
-      }
-
-      showLandingToast(
-        `Logged ${status} call event (saved). Open /dashboard to view.`,
-        "ok"
-      );
-
-      // If user holds Ctrl/Meta, open dashboard immediately (nice during demos).
-      if (e.ctrlKey || e.metaKey) {
-        try {
-          const key = localStorage.getItem("hvac_demo_key") || "";
-          const dashUrl = new URL("/dashboard", window.location.origin);
-          if (key) dashUrl.searchParams.set("key", key);
-          window.open(dashUrl.toString(), "_blank", "noopener");
-        } catch {
-          // ignore
-        }
-      }
-    } catch (err) {
-      console.warn("Demo call click logging failed:", err);
-      showLandingToast("Failed to log call event", "bad");
-    }
-  }
-
-  // Capture phase ensures we intercept before the browser hands off tel: to the OS.
-  document.addEventListener("click", handleTelClick, true);
-  // Some environments trigger tel handling very early; also intercept pointerdown.
-  document.addEventListener("pointerdown", handleTelClick, true);
-
-  // Small hint in console for you (not user-facing)
-  console.log("Demo mode: tel: links log call events (Alt=answered, Shift=real call).");
-}
-
-async function tryLogMissedCallEventFromForm(payload) {
-  // This is a DEMO bridge: submitting the form implies "call was missed, so they used the form".
-  // Only runs in demo mode, and only when served via http(s) (not file://).
-  if (!isDemoModeEnabled()) return;
-  if (window.location.protocol !== "http:" && window.location.protocol !== "https:") return;
-
-  const callerNumber = formatE164ForDemo(payload?.phone || "");
-  if (!callerNumber) return;
-
-  const key = getOrPromptDemoKey();
-  if (!key) return;
-
-  try {
-    const url = new URL("/api/webhooks/call", window.location.origin);
-    url.searchParams.set("key", key);
-
-    await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-demo-key": key
-      },
-      body: JSON.stringify({
-        callerNumber,
-        status: "missed",
-        source: "landing_form"
-      })
-    });
-  } catch (e) {
-    // Keep landing flow smooth; this is demo-only telemetry.
-    console.warn("Demo missed-call logging failed:", e);
-  }
 }
 
 async function postToFormspree(payload) {
@@ -436,22 +358,18 @@ async function postToBackendFormIntake(payload) {
       body: JSON.stringify(payload || {}),
     });
     if (!res.ok) {
-      let msg = "Form intake failed";
-      try {
-        const json = await res.json();
-        msg = json?.message || json?.error || msg;
-      } catch {
-        // ignore
-      }
-      showLandingToast(msg, "bad");
+      // Avoid user-facing errors on the landing (keeps friction low)
+      // eslint-disable-next-line no-console
+      console.warn("Form intake failed:", res.status);
     }
   } catch (e) {
     console.warn("Backend form intake failed:", e);
-    showLandingToast("Form intake failed (network)", "bad");
   }
 }
 
 function main() {
+  applyConfigToDom();
+
   // Initialize AOS animations
   if (typeof AOS !== 'undefined') {
     AOS.init({
@@ -462,24 +380,24 @@ function main() {
     });
   }
 
-  setupDemoFooterLinks();
-  setupDemoCallClickBridge();
   setupSmoothScroll();
 
-  const forms = [$("#serviceForm"), $("#serviceForm2")].filter(Boolean);
+  const forms = [$("#serviceForm")].filter(Boolean);
   if (forms.length === 0) return;
 
   forms.forEach((form) => {
+    form.dataset.submitted = "0";
     setupInlineValidation(form);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
 
       const submitBtn = form.querySelector('button[type="submit"]');
-      const successEl = $("#formSuccess", form) || $("#formSuccess2", form);
+      const successEl = $("#formSuccess", form);
       if (successEl) successEl.hidden = true;
 
-      const ok = validate(form);
+      form.dataset.submitted = "1";
+      const ok = validate(form, { showErrors: true });
       if (!ok) return;
 
       const payload = serialize(form);
@@ -493,8 +411,8 @@ function main() {
             console.warn("Formspree error:", res.status, await res.text());
           }
         } else {
-          // Demo mode: log the captured fields so it still feels real.
-          console.log("Demo form submission:", payload);
+          // Optional local logging for development
+          console.log("Form submission:", payload);
         }
 
         // Always: send to our backend intake so it appears on /dashboard.
@@ -502,14 +420,12 @@ function main() {
         postToBackendFormIntake(payload);
 
         showSuccess(form);
-        // Demo bridge: log a missed-call event so it appears in /dashboard.
-        // (This runs only when the landing is opened with ?demo=1)
-        tryLogMissedCallEventFromForm(payload);
         form.reset();
-        validate(form); // clears any invalid UI state
+        clearErrors(form);
+        form.dataset.submitted = "0";
       } catch (err) {
         console.warn("Form submit error:", err);
-        showSuccess(form); // still show success in demo to keep flow smooth
+        showSuccess(form);
       } finally {
         setSubmitting(submitBtn, false);
       }
