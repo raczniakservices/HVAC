@@ -33,10 +33,6 @@
           </div>
         </div>
         <div class="topbar__right" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <label class="topbar-toggle" title="Hide demo-generated rows from the table and summary">
-            <input id="hideDemoRows" type="checkbox" checked />
-            Hide Demo rows
-          </label>
           <div class="muted" style="align-self:center; font-size:12px; font-weight:800;">
             Last fetch: <span id="lastFetchAt">—</span>
             <span class="muted">•</span>
@@ -57,7 +53,7 @@
         <div class="section__head">
           <h2>Recent call events</h2>
           <p class="muted">
-            Demo flow: unhandled opportunity → event stored → visible here → mark follow-up.
+            New opportunities captured from calls and forms. Set a Result after follow-up.
           </p>
         </div>
 
@@ -85,7 +81,7 @@
         </div>
 
         <p class="micro-note muted" style="margin-top:-4px; margin-bottom:14px;">
-          Call click = someone tried to call. Form submit = request sent. Pick a Result after you call them back (that marks it handled).
+          Tip: “Inbound call” = phone call. “Form submit” = web request. Setting a Result marks the lead handled.
         </p>
 
         <div class="table-wrap">
@@ -117,7 +113,7 @@
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./dashboard.js?v=12" defer></script>
+    <script src="./dashboard.js?v=13" defer></script>
   </body>
 </html>
 

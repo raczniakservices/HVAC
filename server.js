@@ -18,6 +18,11 @@ const DATABASE_PATH = process.env.DATABASE_PATH
   ? String(process.env.DATABASE_PATH)
   : "./data/calls.sqlite";
 
+// Customer-ready default: demo simulator tooling is disabled unless explicitly enabled.
+const ENABLE_SIMULATOR =
+  String(process.env.ENABLE_SIMULATOR || "").toLowerCase() === "true" ||
+  String(process.env.ENABLE_SIMULATOR || "").toLowerCase() === "1";
+
 // Twilio webhook verification + optional call forwarding
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
   ? String(process.env.TWILIO_AUTH_TOKEN)
@@ -203,6 +208,13 @@ function requireDemoAuth(req, res, next) {
   });
 }
 
+function requireSimulatorEnabled(req, res, next) {
+  if (!ENABLE_SIMULATOR) {
+    return res.status(404).json({ message: "Not found" });
+  }
+  return next();
+}
+
 function guardedPage(req, res, fileName) {
   if (!DEMO_KEY) {
     return res
@@ -381,7 +393,10 @@ app.use(express.static(__dirname));
 
 // Pages
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-app.get("/demo", (req, res) => guardedPage(req, res, "demo.html"));
+app.get("/demo", (req, res) => {
+  if (!ENABLE_SIMULATOR) return res.status(404).send("Not found");
+  return guardedPage(req, res, "demo.html");
+});
 app.get("/dashboard", (req, res) => guardedPage(req, res, "dashboard.html"));
 
 // Health check (safe to expose publicly; no secrets)
@@ -763,7 +778,7 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
 });
 
 // API: create event (webhook simulator)
-app.post("/api/webhooks/call", requireDemoAuth, (req, res) => {
+app.post("/api/webhooks/call", requireDemoAuth, requireSimulatorEnabled, (req, res) => {
   const callerNumber = normalizeCallerNumber(req.body?.callerNumber);
   const status = req.body?.status;
   const source = req.body?.source ? String(req.body.source) : "simulator";

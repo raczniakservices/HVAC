@@ -151,36 +151,11 @@ let agoTickerId = null;
 let mutationEpoch = 0;
 const mutatingIds = new Set();
 let isInteracting = false;
-let hideDemoRows = true;
 const editingOutcomeIds = new Set();
-
-const HIDE_DEMO_ROWS_STORAGE_KEY = "hide_demo_rows";
-
-function readHideDemoRowsFromStorage() {
-  try {
-    const raw = localStorage.getItem(HIDE_DEMO_ROWS_STORAGE_KEY);
-    if (raw === null) return true; // default ON for demos
-    if (raw === "true") return true;
-    if (raw === "false") return false;
-    if (raw === "1") return true;
-    if (raw === "0") return false;
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-function writeHideDemoRowsToStorage(val) {
-  try {
-    localStorage.setItem(HIDE_DEMO_ROWS_STORAGE_KEY, String(!!val));
-  } catch {
-    // ignore
-  }
-}
 
 function applyDemoFilter(events) {
   const rows = Array.isArray(events) ? events : [];
-  if (!hideDemoRows) return rows;
+  // Client-ready: never show demo/simulator-generated rows in the customer dashboard/export.
   return rows.filter((e) => e?.source !== "simulator");
 }
 
@@ -461,11 +436,8 @@ function renderRows(events) {
 
   if (!Array.isArray(events) || events.length === 0) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
-    const hiddenOnlyDemo =
-      hasAny && hideDemoRows && eventsCache.every((e) => e?.source === "simulator");
-    const msg = hiddenOnlyDemo
-      ? `No rows match the current filter. Uncheck “Hide Demo rows” to view demo data.`
-      : `No events yet.`;
+    const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
+    const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
     tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
     return;
   }
@@ -638,19 +610,6 @@ async function main() {
   
   // Keep simulator link keyed
   // Simulator link removed from UI (demo-only tooling).
-
-  const hideToggle = $("#hideDemoRows");
-  hideDemoRows = readHideDemoRowsFromStorage();
-  if (hideToggle) {
-    hideToggle.checked = !!hideDemoRows;
-    hideToggle.addEventListener("change", () => {
-      hideDemoRows = !!hideToggle.checked;
-      writeHideDemoRowsToStorage(hideDemoRows);
-      const filtered = applyDemoFilter(eventsCache);
-      renderRows(filtered);
-      setSummary(filtered);
-    });
-  }
 
   $("#exportBtn")?.addEventListener("click", () => exportVisibleRowsToCsv());
   $("#refreshBtn")?.addEventListener("click", () => loadCalls({ silent: false }));
