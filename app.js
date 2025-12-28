@@ -289,12 +289,42 @@ function applyConfigToDom() {
     });
   }
 
-  function scrollToStep(stepIdx) {
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let activeStepIdx = 0;
+  let isProgrammaticScroll = false;
+  let programmaticT = null;
+
+  function setActiveStep(stepIdx) {
+    activeStepIdx = Math.max(0, Math.min(steps.length - 1, Number(stepIdx) || 0));
+    setActiveDot(activeStepIdx);
+  }
+
+  function scrollToStep(stepIdx, { behavior } = {}) {
     if (!track) return;
-    const step = steps[stepIdx];
+    const idx = Math.max(0, Math.min(steps.length - 1, Number(stepIdx) || 0));
+    const step = steps[idx];
     if (!step) return;
-    track.scrollTo({ left: step.left, behavior: "smooth" });
-    setActiveDot(stepIdx);
+
+    // If the user clicks repeatedly while smooth scrolling is in-flight, using scrollLeft as
+    // the source of truth can "stick" on some browsers. We track activeStepIdx explicitly.
+    setActiveStep(idx);
+
+    // If a smooth scroll is already happening, jump immediately to prevent getting stuck.
+    const useBehavior =
+      behavior || (prefersReducedMotion || isProgrammaticScroll ? "auto" : "smooth");
+
+    isProgrammaticScroll = true;
+    if (programmaticT) window.clearTimeout(programmaticT);
+    programmaticT = window.setTimeout(() => {
+      isProgrammaticScroll = false;
+      programmaticT = null;
+    }, useBehavior === "smooth" ? 420 : 80);
+
+    track.scrollTo({ left: step.left, behavior: useBehavior });
   }
 
   let autoT = null;
@@ -331,9 +361,9 @@ function applyConfigToDom() {
         dots.appendChild(dot);
       });
 
-      const active = getStepFromScroll();
-      setActiveDot(active);
-      if (!keepScrollPosition) scrollToStep(active);
+      const active = keepScrollPosition ? getStepFromScroll() : activeStepIdx;
+      setActiveStep(active);
+      if (!keepScrollPosition) scrollToStep(activeStepIdx);
     }
 
     rebuildStepsAndDots();
@@ -342,7 +372,9 @@ function applyConfigToDom() {
     let scrollT = null;
     track.addEventListener("scroll", () => {
       window.clearTimeout(scrollT);
-      scrollT = window.setTimeout(() => setActiveDot(getStepFromScroll()), 80);
+      scrollT = window.setTimeout(() => {
+        if (!isProgrammaticScroll) setActiveStep(getStepFromScroll());
+      }, 80);
     });
     track.addEventListener("pointerenter", stopAuto);
     track.addEventListener("pointerleave", startAuto);
@@ -351,13 +383,13 @@ function applyConfigToDom() {
 
     if (btnPrev)
       btnPrev.addEventListener("click", () => {
-        const i = getStepFromScroll();
+        const i = activeStepIdx;
         const prev = (i - 1 + steps.length) % steps.length;
         scrollToStep(prev);
       });
     if (btnNext)
       btnNext.addEventListener("click", () => {
-        const i = getStepFromScroll();
+        const i = activeStepIdx;
         const next = (i + 1) % steps.length;
         scrollToStep(next);
       });
