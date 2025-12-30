@@ -1117,6 +1117,135 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border-color:rgba(220,38,38,.25);
 }
 
+/* ======================================================
+   Dashboard mobile layout (card view)
+   ====================================================== */
+.dashboard-cards{
+  display:none;
+  margin-top:12px;
+}
+.dashboard-card{
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:var(--bg);
+  box-shadow:var(--shadow);
+  padding:12px 12px;
+  margin-bottom:10px;
+}
+.dashboard-card__top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.dashboard-card__meta{
+  min-width:0;
+}
+.dashboard-card__time{
+  font-weight:900;
+  font-size:13px;
+}
+.dashboard-card__caller{
+  margin-top:4px;
+  font-family:ui-monospace,monospace;
+  font-size:12px;
+  white-space:nowrap;
+}
+.dashboard-card__details{
+  margin-top:6px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.25;
+  white-space:normal;
+}
+.dashboard-card__badges{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+  flex:0 0 auto;
+}
+.dashboard-card__grid{
+  margin-top:10px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.dashboard-kv{
+  border:1px solid rgba(226,232,240,.85);
+  border-radius:14px;
+  background:var(--soft);
+  padding:10px 10px;
+  min-width:0;
+}
+.dashboard-kv__label{
+  font-size:11px;
+  font-weight:900;
+  color:var(--muted);
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.dashboard-kv__value{
+  margin-top:4px;
+  font-size:13px;
+  font-weight:800;
+  color:var(--text);
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.dashboard-card__actions{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.dashboard-card__actions .outcome-select{
+  font-size:13px;
+  padding:10px 12px;
+  border-radius:14px;
+}
+.dashboard-card__delete{
+  width:44px;
+  height:44px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:var(--bg);
+  cursor:pointer;
+  display:grid;
+  place-items:center;
+  font-size:18px;
+  opacity:.75;
+}
+.dashboard-card__delete:hover{opacity:1}
+
+@media (max-width: 760px){
+  .dashboard-page .topbar__inner{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .dashboard-page .topbar__right{
+    width:100%;
+    justify-content:space-between;
+  }
+  .dashboard-page .topbar__right .btn{
+    flex:1;
+    min-width:0;
+    justify-content:center;
+  }
+  .dashboard-page .topbar__right .muted{
+    width:100%;
+    order:-1;
+  }
+
+  /* Swap table for card list on phones */
+  .dashboard-page .table-wrap{display:none;}
+  .dashboard-page .dashboard-cards{display:block;}
+}
+
 .call-created{
   margin-top:12px;
   padding:12px 12px;

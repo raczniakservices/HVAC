@@ -449,16 +449,21 @@ function setSummary(events) {
 function renderRows(events) {
   const tbody = $("#rows");
   if (!tbody) return;
+  const cards = $("#cards");
+  if (cards) cards.hidden = false;
 
   if (!Array.isArray(events) || events.length === 0) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
     tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
+    if (cards) {
+      cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
+    }
     return;
   }
 
-  tbody.innerHTML = events
+  const tableHtml = events
     .map((ev) => {
       const isMissed = ev.status === "missed";
       // Follow-up is now driven by selecting a Result (Outcome).
@@ -563,6 +568,104 @@ function renderRows(events) {
       `;
     })
     .join("");
+
+  tbody.innerHTML = tableHtml;
+
+  if (cards) {
+    cards.innerHTML = events
+      .map((ev) => {
+        const rs = computeResponseSeconds(ev);
+        const responseText = typeof rs === "number" ? formatDuration(rs) : "—";
+
+        const sourceInfo = formatSource(ev.source);
+
+        const callLenSec =
+          typeof ev?.dialCallDurationSec === "number"
+            ? ev.dialCallDurationSec
+            : typeof ev?.callDurationSec === "number"
+              ? ev.callDurationSec
+              : null;
+        const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+
+        const isFormLead = ev.source === "landing_form";
+        const statusClass = isFormLead ? (ev.followedUp ? "answered" : "missed") : ev.status;
+        const statusLabel = isFormLead ? (ev.followedUp ? "followed up" : "new lead") : ev.status;
+
+        const detailsText = isFormLead && ev.note ? String(ev.note) : "";
+
+        const currentOutcome = ev.outcome ? String(ev.outcome) : "";
+        const outcomeOption =
+          OUTCOME_OPTIONS.find((o) => o.value === currentOutcome) || OUTCOME_OPTIONS[0];
+
+        const outcomeOptionsHtml = OUTCOME_OPTIONS.map((o) => {
+          const selected = o.value === currentOutcome ? "selected" : "";
+          return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
+        }).join("");
+
+        // Outcome display with timestamp
+        let outcomeDisplay = `<span style="color:${outcomeOption.color}; font-weight:800;">${escapeHtml(outcomeOption.displayLabel)}</span>`;
+        if (ev.outcomeAt && currentOutcome) {
+          outcomeDisplay += `<span class="muted" style="font-size:12px; margin-left:8px;">${escapeHtml(formatTimeShort(ev.outcomeAt))}</span>`;
+        }
+
+        const isEditingOutcome = editingOutcomeIds.has(String(ev.id));
+        const outcomeControlsHtml = currentOutcome
+          ? `
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <div style="min-width:0;">${outcomeDisplay}</div>
+                <button class="btn-link js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
+              </div>
+              <div style="margin-top:10px; ${isEditingOutcome ? "" : "display:none;"}">
+                <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:13px;">
+                  ${outcomeOptionsHtml}
+                </select>
+                <div style="margin-top:8px;">
+                  <button class="btn-link js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
+                </div>
+              </div>
+            `
+          : `
+              <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:13px;">
+                ${outcomeOptionsHtml}
+              </select>
+            `;
+
+        return `
+          <div class="dashboard-card" data-id="${escapeHtml(ev.id)}">
+            <div class="dashboard-card__top">
+              <div class="dashboard-card__meta">
+                <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
+                <div class="dashboard-card__caller">${escapeHtml(ev.callerNumber || "")}</div>
+                ${detailsText ? `<div class="dashboard-card__details">${escapeHtml(detailsText)}</div>` : ""}
+              </div>
+              <div class="dashboard-card__badges">
+                <span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
+                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(sourceInfo.label)}</span>
+              </div>
+            </div>
+
+            <div class="dashboard-card__grid">
+              <div class="dashboard-kv">
+                <div class="dashboard-kv__label">Call length</div>
+                <div class="dashboard-kv__value">${escapeHtml(callLenText)}</div>
+              </div>
+              <div class="dashboard-kv">
+                <div class="dashboard-kv__label">Response</div>
+                <div class="dashboard-kv__value">${escapeHtml(responseText)}</div>
+              </div>
+            </div>
+
+            <div class="dashboard-card__actions">
+              <div style="flex:1; min-width:0;">
+                ${outcomeControlsHtml}
+              </div>
+              <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  }
 }
 
 function upsertEvent(ev) {
@@ -644,11 +747,13 @@ async function main() {
     }
   });
 
-  $("#rows")?.addEventListener("click", async (e) => {
+  const eventsRoot = $("#eventsRoot") || $("#rows");
+
+  eventsRoot?.addEventListener("click", async (e) => {
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
-      const tr = editOutcomeBtn.closest("tr");
-      const id = tr?.dataset?.id;
+      const rowEl = editOutcomeBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
       if (!id) return;
       if (editingOutcomeIds.has(String(id))) editingOutcomeIds.delete(String(id));
       else editingOutcomeIds.add(String(id));
@@ -658,8 +763,8 @@ async function main() {
 
     const cancelOutcomeBtn = e.target.closest(".js-cancel-outcome");
     if (cancelOutcomeBtn) {
-      const tr = cancelOutcomeBtn.closest("tr");
-      const id = tr?.dataset?.id;
+      const rowEl = cancelOutcomeBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
       if (!id) return;
       editingOutcomeIds.delete(String(id));
       renderRows(applyDemoFilter(eventsCache));
@@ -668,8 +773,8 @@ async function main() {
 
     const deleteBtn = e.target.closest(".js-delete");
     if (deleteBtn) {
-      const tr = deleteBtn.closest("tr");
-      const id = tr?.dataset?.id;
+      const rowEl = deleteBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
       if (!id) return;
 
       console.log("Delete clicked:", { id });
@@ -703,14 +808,14 @@ async function main() {
     }
   });
 
-  $("#rows")?.addEventListener("change", async (e) => {
+  eventsRoot?.addEventListener("change", async (e) => {
     if (!e.target.matches || !e.target.matches(".js-outcome")) {
       return;
     }
     
     const sel = e.target;
-    const tr = sel.closest("tr");
-    const id = tr?.dataset?.id;
+    const rowEl = sel.closest("[data-id]");
+    const id = rowEl?.dataset?.id;
     if (!id) return;
 
     const raw = sel.value;
@@ -773,14 +878,13 @@ async function main() {
   });
 
   // Interaction detection: pause auto-refresh while user is focused on controls
-  const tbody = $("#rows");
-  if (tbody) {
-    tbody.addEventListener("focusin", (e) => {
+  if (eventsRoot) {
+    eventsRoot.addEventListener("focusin", (e) => {
       if (e.target.matches && e.target.matches(".js-outcome")) {
         isInteracting = true;
       }
     });
-    tbody.addEventListener("focusout", (e) => {
+    eventsRoot.addEventListener("focusout", (e) => {
       if (e.target.matches && e.target.matches(".js-outcome")) {
         // Use short timeout to allow click handlers to complete
         setTimeout(() => {
