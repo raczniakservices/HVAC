@@ -14,6 +14,13 @@ export const SITE_CONFIG = {
   ratingBannerUrl: "/assets/brand/rating-banner.jpg?v=20251228",
   satisfactionSealUrl: "/assets/brand/satisfaction-seal.jpg?v=20251228",
 
+  // Reviews (optional; used for hero trust + schema)
+  // Keep these truthful for the specific client you deploy to.
+  ratingValue: 4.9,
+  reviewCount: 287,
+  reviewSourceLabel: "Google",
+  reviewUrl: "",
+
   // Optional hero / about photos (leave blank if not used)
   heroImageUrl: "",
   aboutImageUrl: "",

@@ -82,6 +82,23 @@ function formatDuration(seconds) {
   return `${m}m ${rem}s`;
 }
 
+function formatSla(ev) {
+  const dueAt = ev?.slaDueAt ? Date.parse(ev.slaDueAt) : null;
+  if (!Number.isFinite(dueAt)) return { label: "—", cls: "sla sla--none" };
+  if (ev?.outcome) return { label: "Handled", cls: "sla sla--ok" };
+
+  const ms = dueAt - Date.now();
+  const mins = Math.ceil(Math.abs(ms) / 60000);
+  if (ms <= 0) return { label: `Overdue ${mins}m`, cls: "sla sla--overdue" };
+  if (mins <= 2) return { label: `Due ${mins}m`, cls: "sla sla--due" };
+  return { label: `Due ${mins}m`, cls: "sla sla--ok" };
+}
+
+function formatOwner(ev) {
+  const s = String(ev?.assignedTo || "").trim();
+  return s || "Unassigned";
+}
+
 function formatLocalDateTime(iso) {
   if (!iso) return "";
   try {
@@ -258,6 +275,8 @@ function startAutoRefresh() {
     if (mutatingIds.size > 0) return;
     // Avoid overwriting UI while user is interacting with controls
     if (isInteracting) return;
+    // Keep automation state updated (demo-safe: logs only; no SMS/email sent)
+    fetch(withKey("/api/automation/run"), { method: "POST" }).catch(() => {});
     loadCalls({ silent: true });
   }, 10_000);
 }
@@ -426,12 +445,18 @@ function setSummary(events) {
   // - For calls: missed and not followed up
   // - For forms: treated as unhandled until followed up (status is stored as 'missed' for simplicity)
   const missed = events.filter((e) => e.status === "missed" && !e.followedUp).length;
+  const overdue = events.filter((e) => {
+    if (e?.outcome) return false;
+    const dueAt = e?.slaDueAt ? Date.parse(e.slaDueAt) : null;
+    return Number.isFinite(dueAt) && Date.now() > dueAt;
+  }).length;
   const followedUp = events.filter((e) => !!e.followedUp).length;
   const within5 = events.filter((e) => {
     if (!e.followedUp) return false;
     const rs = computeResponseSeconds(e);
     return Number.isFinite(rs) && rs <= 300;
   }).length;
+  const escalated = events.filter((e) => !!e?.escalatedAt && !e?.outcome).length;
   const booked = events.filter((e) => e.outcome === "booked").length;
   const lost = events.filter((e) => {
     if (e.outcome === "already_hired" || e.outcome === "wrong_number") return true;
@@ -440,10 +465,76 @@ function setSummary(events) {
   }).length;
 
   set("sumMissed", missed);
+  set("sumOverdue", overdue);
   set("sumFollowedUp", followedUp);
   set("sumWithin5", within5);
+  set("sumEscalated", escalated);
   set("sumBooked", booked);
   set("sumLost", lost);
+}
+
+function formatAutomationKind(kind) {
+  const k = String(kind || "").trim();
+  if (k === "sla_breached") {
+    return { title: "SLA breached", pill: "Overdue", pillClass: "automation-item__pill--warn" };
+  }
+  if (k === "escalated") {
+    return { title: "Escalated", pill: "Escalated", pillClass: "automation-item__pill--danger" };
+  }
+  if (k === "lead_created") {
+    return { title: "Lead created", pill: "New", pillClass: "" };
+  }
+  return { title: k || "Event", pill: "Event", pillClass: "" };
+}
+
+function renderAutomationEvents(items) {
+  const empty = document.getElementById("automationEmpty");
+  const list = document.getElementById("automationList");
+  if (!list) return;
+
+  const rows = Array.isArray(items) ? items : [];
+  if (rows.length === 0) {
+    if (empty) empty.textContent = "No automation events yet.";
+    list.hidden = true;
+    return;
+  }
+
+  if (empty) empty.textContent = "";
+  list.hidden = false;
+  list.innerHTML = rows
+    .map((ev) => {
+      const info = formatAutomationKind(ev?.kind);
+      const at = ev?.createdAt ? formatTimeFull(ev.createdAt) : "";
+      const callId = ev?.callEventId ? `Lead #${ev.callEventId}` : "—";
+      const due = ev?.payload?.dueAt ? `Due: ${formatTimeShort(ev.payload.dueAt)}` : "";
+      const who = ev?.payload?.assignedTo ? `Owner: ${ev.payload.assignedTo}` : "";
+      const metaParts = [callId, who, due].filter(Boolean);
+      return `
+        <div class="automation-item">
+          <div class="automation-item__left">
+            <div class="automation-item__title">${escapeHtml(info.title)}</div>
+            <div class="automation-item__meta">${escapeHtml([at, ...metaParts].filter(Boolean).join(" • ") || "—")}</div>
+          </div>
+          <div class="automation-item__pill ${escapeHtml(info.pillClass)}">${escapeHtml(info.pill)}</div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function fetchAutomationEvents() {
+  const key = getKey();
+  const res = await fetch(withKey("/api/automation/events?limit=8"), {
+    headers: { ...(key ? { "x-demo-key": key } : {}) },
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = text ? JSON.parse(text) : [];
+  } catch {
+    json = [];
+  }
+  return Array.isArray(json) ? json : [];
 }
 
 function renderRows(events) {
@@ -456,7 +547,7 @@ function renderRows(events) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
-    tbody.innerHTML = `<tr><td colspan="8" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="muted">${escapeHtml(msg)}</td></tr>`;
     if (cards) {
       cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
     }
@@ -541,6 +632,9 @@ function renderRows(events) {
       else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") rowClass = "row-danger";
       else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") rowClass = "row-warning";
 
+      const sla = formatSla(ev);
+      const ownerLabel = formatOwner(ev);
+
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
@@ -555,12 +649,22 @@ function renderRows(events) {
               ${sourceInfo.label}
             </span>
           </td>
+          <td><span class="${escapeHtml(sla.cls)}">${escapeHtml(sla.label)}</span></td>
+          <td>
+            <div class="owner-cell">
+              <span class="owner-cell__name">${escapeHtml(ownerLabel)}</span>
+              <button class="btn-link js-assign" type="button" title="Assign owner">Assign</button>
+            </div>
+          </td>
           <td>${escapeHtml(responseText)}</td>
           <td style="overflow:visible;">
             ${outcomeControlsHtml}
           </td>
           <td style="text-align:right; overflow:visible;">
             <div style="display:inline-flex; gap:8px; justify-content:flex-end; align-items:center;">
+              <a class="btn btn--secondary btn--sm" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back" style="height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 12px; font-weight:900;">
+                Call back
+              </a>
               <button class="btn btn--secondary btn--sm js-delete" type="button" title="Delete" aria-label="Delete" style="width:40px; height:40px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:18px; opacity:0.6; flex-shrink:0;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">🗑</button>
             </div>
           </td>
@@ -653,12 +757,26 @@ function renderRows(events) {
                 <div class="dashboard-kv__label">Response</div>
                 <div class="dashboard-kv__value">${escapeHtml(responseText)}</div>
               </div>
+              <div class="dashboard-kv">
+                <div class="dashboard-kv__label">SLA</div>
+                <div class="dashboard-kv__value"><span class="${escapeHtml(formatSla(ev).cls)}">${escapeHtml(formatSla(ev).label)}</span></div>
+              </div>
+              <div class="dashboard-kv">
+                <div class="dashboard-kv__label">Owner</div>
+                <div class="dashboard-kv__value" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                  <span style="font-weight:900;">${escapeHtml(formatOwner(ev))}</span>
+                  <button class="btn-link js-assign" type="button" title="Assign owner">Assign</button>
+                </div>
+              </div>
             </div>
 
             <div class="dashboard-card__actions">
               <div style="flex:1; min-width:0;">
                 ${outcomeControlsHtml}
               </div>
+              <a class="btn btn--secondary btn--sm" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back" style="height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 12px; font-weight:900;">
+                Call back
+              </a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
           </div>
@@ -692,6 +810,8 @@ async function loadCalls({ silent, force } = {}) {
   if (btn && !silent) btn.disabled = true;
   const epochAtStart = mutationEpoch;
   try {
+    // keep automation state fresh (demo-safe: logs only)
+    fetch(withKey("/api/automation/run"), { method: "POST" }).catch(() => {});
     const calls = await fetchCalls();
 
     // If a mutation started during this fetch, don't overwrite UI with stale data.
@@ -713,6 +833,9 @@ async function loadCalls({ silent, force } = {}) {
     const filtered = applyDemoFilter(eventsCache);
     renderRows(filtered);
     setSummary(filtered);
+    fetchAutomationEvents()
+      .then(renderAutomationEvents)
+      .catch(() => renderAutomationEvents([]));
     setLastFetch(new Date());
     setUpdatedAgoText();
   } catch (e) {
@@ -731,7 +854,7 @@ async function main() {
   // Simulator link removed from UI (demo-only tooling).
 
   $("#exportBtn")?.addEventListener("click", () => exportVisibleRowsToCsv());
-  $("#refreshBtn")?.addEventListener("click", () => loadCalls({ silent: false }));
+  $("#refreshBtn")?.addEventListener("click", () => loadCalls({ silent: false, force: true }));
   $("#clearAllBtn")?.addEventListener("click", async () => {
     if (!confirm("Clear all call events? (demo cleanup)")) return;
     pauseAutoRefresh(3000);
@@ -750,6 +873,53 @@ async function main() {
   const eventsRoot = $("#eventsRoot") || $("#rows");
 
   eventsRoot?.addEventListener("click", async (e) => {
+    const assignBtn = e.target.closest(".js-assign");
+    if (assignBtn) {
+      const rowEl = assignBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+
+      const current = getEventById(id);
+      const existing = String(current?.assignedTo || "").trim();
+      const next = prompt("Assign this lead to (name):", existing);
+      if (next === null) return; // cancelled
+      const assignedTo = String(next || "").trim();
+
+      pauseAutoRefresh(3000);
+      mutationEpoch += 1;
+      mutatingIds.add(String(id));
+      assignBtn.disabled = true;
+      try {
+        // Optimistic update
+        upsertEvent({ id, assignedTo: assignedTo || null });
+        renderRows(applyDemoFilter(eventsCache));
+
+        const updated = await fetch(withKey(`/api/calls/${encodeURIComponent(id)}/assign`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignedTo: assignedTo || null }),
+        }).then(async (r) => {
+          const t = await r.text();
+          let j;
+          try { j = t ? JSON.parse(t) : null; } catch { j = { message: t }; }
+          if (!r.ok) throw new Error(j?.message || j?.error || `Assign failed (${r.status})`);
+          return j;
+        });
+
+        upsertEvent(updated);
+        mutatingIds.delete(String(id));
+        renderRows(applyDemoFilter(eventsCache));
+        showToast("Assigned", "ok");
+      } catch (err) {
+        mutatingIds.delete(String(id));
+        showToast(err.message || "Assign failed", "bad");
+        await loadCalls({ silent: true, force: true });
+      } finally {
+        assignBtn.disabled = false;
+      }
+      return;
+    }
+
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
       const rowEl = editOutcomeBtn.closest("[data-id]");

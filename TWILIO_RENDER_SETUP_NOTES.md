@@ -5,7 +5,7 @@
   - Landing page `/` (static HTML/CSS/JS)
   - Demo simulator `/demo`
   - Dashboard `/dashboard` (protected by `DEMO_KEY`)
-  - Twilio webhooks `/twilio/voice` and `/twilio/status`
+  - Twilio webhooks `/twilio/voice`, `/twilio/status`, and `/twilio/sms`
   - One-phone test endpoint `/api/twilio/test-call` (creates a Twilio outbound call to your phone)
 
 ## Live URLs (current)
@@ -33,6 +33,32 @@ One-phone Twilio testing (Twilio API call creation):
 
 Optional:
 - `TWILIO_VALIDATE_SIGNATURE` (default `1`; set `0` only for debugging)
+ - `RESCUE_FORM_PATH` (default `/#request`; link included in missed-call text-back)
+ - `RESCUE_YES_KEYWORD` (default `YES`; replying this triggers an auto-callback bridge)
+
+## Lead rescue automation (what makes this demo different from “just call logs”)
+This demo includes a lightweight “lead leak prevention” layer:
+- **Owner assignment** (who is responsible)
+- **SLA timer** (due/overdue)
+- **Escalation events** (when SLA is breached and when it escalates)
+
+### Environment variables
+- `SLA_DEFAULT_MINUTES` (default `5`)
+- `ESCALATE_AFTER_MINUTES` (default `10`, counted after SLA due time)
+- `AUTOMATION_MODE`:
+  - `log` (default): **demo-safe**. We only record what would have happened in the Automation log.
+  - `sms`: enables missed-call text-back + inbound SMS “YES” handling (requires Twilio creds).
+
+### Local dev note
+Twilio inbound webhooks may not be reachable locally (expected). The dashboard and automation logic still work locally because:
+- Form submissions (`/api/landing/form`) create leads in SQLite
+- Automation runs in **log mode** and writes `AutomationEvent` rows
+
+### Compliance note (when you turn on real messaging later)
+If you enable auto-texting missed calls:
+- Only send messages when you have a clear consent workflow (e.g., checkbox on the web form)
+- Include opt-out instructions (STOP/HELP) and store consent metadata
+- Expect Twilio US messaging compliance steps (A2P/10DLC) for sustained sending
 
 ## Twilio Console (Phone Number → Voice Configuration)
 Set for the Twilio number:
@@ -40,6 +66,11 @@ Set for the Twilio number:
   - `https://hvac-r7bp.onrender.com/twilio/voice`
 - **Call status changes** (HTTP POST):
   - `https://hvac-r7bp.onrender.com/twilio/status`
+
+## Twilio Console (Phone Number → Messaging Configuration)
+Set for the Twilio number:
+- **A message comes in** (Webhook, HTTP POST):
+  - `https://hvac-r7bp.onrender.com/twilio/sms`
 
 ## Important behaviors we implemented
 - **Dashboard “Type” label**:

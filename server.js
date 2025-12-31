@@ -37,6 +37,19 @@ const TWILIO_FORWARD_TO = process.env.TWILIO_FORWARD_TO
 const TWILIO_VALIDATE_SIGNATURE =
   String(process.env.TWILIO_VALIDATE_SIGNATURE || "1") !== "0";
 
+// Lead-rescue automation (demo-safe defaults)
+const SLA_DEFAULT_MINUTES = Number(process.env.SLA_DEFAULT_MINUTES || 5);
+const ESCALATE_AFTER_MINUTES = Number(process.env.ESCALATE_AFTER_MINUTES || 10);
+// "log" (default): record what would happen without sending anything.
+// Future modes you can add: "email", "sms"
+const AUTOMATION_MODE = String(process.env.AUTOMATION_MODE || "log").toLowerCase();
+
+// Missed-call SMS rescue (optional; requires AUTOMATION_MODE="sms" + Twilio creds)
+const RESCUE_FORM_PATH = process.env.RESCUE_FORM_PATH ? String(process.env.RESCUE_FORM_PATH) : "/#request";
+const RESCUE_YES_KEYWORD = process.env.RESCUE_YES_KEYWORD
+  ? String(process.env.RESCUE_YES_KEYWORD)
+  : "YES";
+
 const resolvedDbPath = path.isAbsolute(DATABASE_PATH)
   ? DATABASE_PATH
   : path.join(__dirname, DATABASE_PATH);
@@ -379,6 +392,11 @@ function rowToJson(row) {
       typeof row.dialCallDurationSec === "number"
         ? row.dialCallDurationSec
         : row.dialCallDurationSec ?? null,
+    assignedTo: row.assignedTo ?? null,
+    slaMinutes: typeof row.slaMinutes === "number" ? row.slaMinutes : row.slaMinutes ?? null,
+    slaDueAt: row.slaDueAt ?? null,
+    slaBreachedAt: row.slaBreachedAt ?? null,
+    escalatedAt: row.escalatedAt ?? null,
     responseSeconds,
   };
 }
@@ -500,6 +518,161 @@ function normalizeTwilioCallStatus({
   return "missed";
 }
 
+function safeNumberOrNull(n) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : null;
+}
+
+function normalizeSlaMinutes(raw) {
+  const n = safeNumberOrNull(raw);
+  const fallback = Number.isFinite(SLA_DEFAULT_MINUTES) ? SLA_DEFAULT_MINUTES : 5;
+  if (!Number.isFinite(n)) return fallback;
+  const i = Math.floor(n);
+  if (i < 1) return 1;
+  if (i > 120) return 120;
+  return i;
+}
+
+function computeDueAtIso(createdAtIso, minutes) {
+  const ms = Date.parse(String(createdAtIso));
+  const mins = Number.isFinite(minutes) ? minutes : SLA_DEFAULT_MINUTES;
+  if (!Number.isFinite(ms) || !Number.isFinite(mins)) return null;
+  const dueMs = ms + Math.max(0, Math.floor(mins)) * 60_000;
+  return new Date(dueMs).toISOString();
+}
+
+function getCallEventById(id) {
+  return db.prepare("SELECT * FROM CallEvent WHERE id = ?").get(id);
+}
+
+function getCallEventByCallSid(callSid) {
+  if (!callSid) return null;
+  return db.prepare("SELECT * FROM CallEvent WHERE callSid = ?").get(callSid);
+}
+
+function getMostRecentCallEventForCaller(callerNumber) {
+  const n = normalizeCallerNumber(callerNumber);
+  if (!isValidCallerNumber(n)) return null;
+  return db
+    .prepare("SELECT * FROM CallEvent WHERE callerNumber = ? ORDER BY createdAt DESC LIMIT 1")
+    .get(n);
+}
+
+function updateRescueSmsSent({ callEventId, sentAtIso, smsSid, smsBody }) {
+  db.prepare(
+    "UPDATE CallEvent SET rescueSmsSentAt = COALESCE(rescueSmsSentAt, ?), rescueSmsSid = COALESCE(rescueSmsSid, ?), rescueSmsBody = COALESCE(rescueSmsBody, ?) WHERE id = ?"
+  ).run(sentAtIso, smsSid || null, smsBody || null, callEventId);
+}
+
+function updateRescueInbound({ callEventId, inboundAtIso, inboundBody, yesAtIso }) {
+  db.prepare(
+    "UPDATE CallEvent SET rescueInboundSmsAt = COALESCE(rescueInboundSmsAt, ?), rescueInboundSmsBody = COALESCE(rescueInboundSmsBody, ?), rescueYesAt = COALESCE(rescueYesAt, ?) WHERE id = ?"
+  ).run(inboundAtIso, inboundBody || null, yesAtIso || null, callEventId);
+}
+
+function updateRescueCallbackPlaced({ callEventId, placedAtIso, callSid }) {
+  db.prepare(
+    "UPDATE CallEvent SET rescueCallbackPlacedAt = COALESCE(rescueCallbackPlacedAt, ?), rescueCallbackCallSid = COALESCE(rescueCallbackCallSid, ?) WHERE id = ?"
+  ).run(placedAtIso, callSid || null, callEventId);
+}
+
+function ensureSlaDefaultsForEventId(callEventId) {
+  const row = getCallEventById(callEventId);
+  if (!row) return;
+  const minutes = normalizeSlaMinutes(row.slaMinutes);
+  const dueAt = row.slaDueAt || computeDueAtIso(row.createdAt, minutes);
+  db.prepare(
+    "UPDATE CallEvent SET slaMinutes = COALESCE(slaMinutes, ?), slaDueAt = COALESCE(slaDueAt, ?) WHERE id = ?"
+  ).run(minutes, dueAt, callEventId);
+}
+
+function insertAutomationEvent({ callEventId, kind, dedupeKey, payload }) {
+  const now = new Date().toISOString();
+  const safePayload = payload ? JSON.stringify(payload) : null;
+  try {
+    db.prepare(
+      "INSERT INTO AutomationEvent (createdAt, callEventId, kind, status, dedupeKey, payload) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(
+      now,
+      callEventId ?? null,
+      String(kind),
+      AUTOMATION_MODE || "log",
+      String(dedupeKey),
+      safePayload
+    );
+  } catch (e) {
+    // Unique constraint → already logged; ignore
+    if (String(e?.message || "").toLowerCase().includes("unique")) return;
+    throw e;
+  }
+}
+
+function isHandledRow(row) {
+  // Product rule used by the dashboard copy: "Setting a Result marks the lead handled."
+  return !!row?.outcome;
+}
+
+function runAutomationPass() {
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const rows = db.prepare("SELECT * FROM CallEvent ORDER BY createdAt DESC LIMIT 200").all();
+  let logged = 0;
+
+  for (const row of rows) {
+    if (!row) continue;
+    if (isHandledRow(row)) continue;
+
+    const minutes = normalizeSlaMinutes(row.slaMinutes);
+    const dueAt = row.slaDueAt || computeDueAtIso(row.createdAt, minutes);
+    if (dueAt && (!row.slaMinutes || !row.slaDueAt)) {
+      db.prepare("UPDATE CallEvent SET slaMinutes = ?, slaDueAt = ? WHERE id = ?").run(
+        minutes,
+        dueAt,
+        row.id
+      );
+    }
+
+    const dueMs = dueAt ? Date.parse(dueAt) : null;
+    if (!Number.isFinite(dueMs)) continue;
+
+    if (!row.slaBreachedAt && nowMs > dueMs) {
+      db.prepare("UPDATE CallEvent SET slaBreachedAt = ? WHERE id = ?").run(nowIso, row.id);
+      insertAutomationEvent({
+        callEventId: row.id,
+        kind: "sla_breached",
+        dedupeKey: `sla_breached:${row.id}`,
+        payload: {
+          assignedTo: row.assignedTo || null,
+          dueAt,
+          source: row.source,
+          callerNumber: row.callerNumber,
+        },
+      });
+      logged += 1;
+    }
+
+    const escAfterMin = normalizeSlaMinutes(ESCALATE_AFTER_MINUTES);
+    const escAfterMs = escAfterMin * 60_000;
+    if (!row.escalatedAt && nowMs > dueMs + escAfterMs) {
+      db.prepare("UPDATE CallEvent SET escalatedAt = ? WHERE id = ?").run(nowIso, row.id);
+      insertAutomationEvent({
+        callEventId: row.id,
+        kind: "escalated",
+        dedupeKey: `escalated:${row.id}`,
+        payload: {
+          assignedTo: row.assignedTo || null,
+          dueAt,
+          escalateAfterMinutes: escAfterMin,
+          mode: AUTOMATION_MODE,
+        },
+      });
+      logged += 1;
+    }
+  }
+
+  return { ok: true, logged };
+}
+
 function upsertTwilioEvent({
   callSid,
   from,
@@ -539,6 +712,10 @@ function upsertTwilioEvent({
         dialCallDurationSec ?? null,
         callSid
       );
+      try {
+        const updated = getCallEventByCallSid(callSid);
+        if (updated?.id) ensureSlaDefaultsForEventId(updated.id);
+      } catch {}
       return;
     }
 
@@ -555,6 +732,18 @@ function upsertTwilioEvent({
       callDurationSec ?? null,
       dialCallDurationSec ?? null
     );
+    try {
+      const inserted = getCallEventByCallSid(callSid);
+      if (inserted?.id) {
+        ensureSlaDefaultsForEventId(inserted.id);
+        insertAutomationEvent({
+          callEventId: inserted.id,
+          kind: "lead_created",
+          dedupeKey: `lead_created:${inserted.id}`,
+          payload: { source: "twilio", status },
+        });
+      }
+    } catch {}
     return;
   }
 
@@ -599,6 +788,119 @@ app.post("/twilio/outbound", requireTwilioAuth, (req, res) => {
 
 function canUseTwilioApi() {
   return !!(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_NUMBER);
+}
+
+async function sendTwilioSms({ toNumber, body }) {
+  if (!canUseTwilioApi()) {
+    const e = new Error(
+      "Twilio SMS not configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_NUMBER)."
+    );
+    e.code = "TWILIO_NOT_CONFIGURED";
+    throw e;
+  }
+  const to = String(toNumber || "").trim();
+  if (!isValidCallerNumber(to)) {
+    const e = new Error("Invalid SMS toNumber");
+    e.code = "INVALID_TO";
+    throw e;
+  }
+  const msg = String(body || "").trim();
+  if (!msg) {
+    const e = new Error("Empty SMS body");
+    e.code = "EMPTY_BODY";
+    throw e;
+  }
+
+  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
+  const form = new URLSearchParams();
+  form.set("From", TWILIO_NUMBER);
+  form.set("To", to);
+  form.set("Body", msg);
+
+  const resp = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    }
+  );
+
+  const text = await resp.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text };
+  }
+  if (!resp.ok) {
+    const msg2 = json?.message || json?.error_message || `Twilio API error (${resp.status})`;
+    const e = new Error(msg2);
+    e.status = resp.status;
+    e.details = json;
+    throw e;
+  }
+  return json;
+}
+
+async function createTwilioRescueCallbackCall({ toNumber, leadNumber, baseUrl }) {
+  if (!canUseTwilioApi()) {
+    const e = new Error(
+      "Twilio callback not configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_NUMBER)."
+    );
+    e.code = "TWILIO_NOT_CONFIGURED";
+    throw e;
+  }
+  const to = String(toNumber || "").trim();
+  const lead = normalizeCallerNumber(leadNumber);
+  if (!isValidCallerNumber(to)) {
+    const e = new Error("Invalid callback toNumber");
+    e.code = "INVALID_TO";
+    throw e;
+  }
+  if (!isValidCallerNumber(lead)) {
+    const e = new Error("Invalid leadNumber");
+    e.code = "INVALID_LEAD";
+    throw e;
+  }
+
+  const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
+  const body = new URLSearchParams();
+  body.set("From", TWILIO_NUMBER);
+  body.set("To", to);
+  body.set("Url", `${baseUrl}/twilio/rescue-callback?lead=${encodeURIComponent(lead)}`);
+  body.set("Method", "POST");
+
+  const resp = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Calls.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    }
+  );
+
+  const text = await resp.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text };
+  }
+  if (!resp.ok) {
+    const msg = json?.message || json?.error_message || `Twilio API error (${resp.status})`;
+    const e = new Error(msg);
+    e.status = resp.status;
+    e.details = json;
+    throw e;
+  }
+  return json;
 }
 
 async function createTwilioTestCall({ toNumber, statusCallbackUrl, twimlUrl }) {
@@ -774,7 +1076,148 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
     // eslint-disable-next-line no-console
     console.warn("Twilio status webhook DB write failed:", e);
   }
+
+  // Missed-call text-back: send only on final status ("completed") and only once.
+  try {
+    const cs = String(callStatus || "").toLowerCase().trim();
+    if (cs === "completed" && callSid && isValidCallSid(callSid)) {
+      const row = getCallEventByCallSid(callSid);
+      if (
+        row &&
+        row.source === "twilio" &&
+        row.status === "missed" &&
+        !row.rescueSmsSentAt &&
+        isValidCallerNumber(row.callerNumber)
+      ) {
+        const baseUrl = `${req.protocol}://${req.get("host")}`;
+        const formUrl = `${baseUrl}${RESCUE_FORM_PATH.startsWith("/") ? "" : "/"}${RESCUE_FORM_PATH}`;
+        const keyword = String(RESCUE_YES_KEYWORD || "YES").trim().toUpperCase();
+        const smsBody = `Sorry we missed your call. Reply ${keyword} for a call back, or request here: ${formUrl} Reply STOP to opt out.`;
+
+        if (AUTOMATION_MODE === "sms") {
+          sendTwilioSms({ toNumber: row.callerNumber, body: smsBody })
+            .then((msg) => {
+              try {
+                updateRescueSmsSent({
+                  callEventId: row.id,
+                  sentAtIso: new Date().toISOString(),
+                  smsSid: msg?.sid || null,
+                  smsBody,
+                });
+              } catch {}
+            })
+            .catch((e) => {
+              // eslint-disable-next-line no-console
+              console.warn("Missed-call SMS send failed:", e?.message || e);
+            });
+        } else {
+          insertAutomationEvent({
+            callEventId: row.id,
+            kind: "sms_rescue_scheduled",
+            dedupeKey: `sms_rescue_scheduled:${row.id}`,
+            payload: { to: row.callerNumber, body: smsBody, mode: AUTOMATION_MODE },
+          });
+        }
+      }
+    }
+  } catch {}
+
   return res.status(204).end();
+});
+
+// Twilio: inbound SMS webhook (Messaging)
+// Configure: Twilio Console → Phone Numbers → (your number) → Messaging → "A message comes in"
+app.post("/twilio/sms", requireTwilioAuth, (req, res) => {
+  const from = req.body?.From ? String(req.body.From).trim() : "";
+  const to = req.body?.To ? String(req.body.To).trim() : "";
+  const body = req.body?.Body ? String(req.body.Body) : "";
+
+  const fromNorm = normalizeCallerNumber(from);
+  const msgBody = String(body || "").trim();
+  const keyword = String(RESCUE_YES_KEYWORD || "YES").trim().toUpperCase();
+  const upper = msgBody.toUpperCase();
+  const isYes = upper === keyword || upper === "Y";
+
+  try {
+    const row = getMostRecentCallEventForCaller(fromNorm);
+    if (row?.id) {
+      updateRescueInbound({
+        callEventId: row.id,
+        inboundAtIso: new Date().toISOString(),
+        inboundBody: msgBody,
+        yesAtIso: isYes ? new Date().toISOString() : null,
+      });
+
+      if (isYes) {
+        if (AUTOMATION_MODE === "sms") {
+          if (TWILIO_FORWARD_TO) {
+            const baseUrl = `${req.protocol}://${req.get("host")}`;
+            createTwilioRescueCallbackCall({
+              toNumber: TWILIO_FORWARD_TO,
+              leadNumber: fromNorm,
+              baseUrl,
+            })
+              .then((call) => {
+                try {
+                  updateRescueCallbackPlaced({
+                    callEventId: row.id,
+                    placedAtIso: new Date().toISOString(),
+                    callSid: call?.sid || null,
+                  });
+                } catch {}
+              })
+              .catch((e) => {
+                // eslint-disable-next-line no-console
+                console.warn("Rescue callback call failed:", e?.message || e);
+              });
+          } else {
+            insertAutomationEvent({
+              callEventId: row.id,
+              kind: "rescue_yes_received_no_forward_to",
+              dedupeKey: `rescue_yes_received_no_forward_to:${row.id}`,
+              payload: { from: fromNorm, to, body: msgBody },
+            });
+          }
+        } else {
+          insertAutomationEvent({
+            callEventId: row.id,
+            kind: "rescue_yes_received",
+            dedupeKey: `rescue_yes_received:${row.id}`,
+            payload: { from: fromNorm, to, body: msgBody, mode: AUTOMATION_MODE },
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("Inbound SMS processing failed:", e?.message || e);
+  }
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const formUrl = `${baseUrl}${RESCUE_FORM_PATH.startsWith("/") ? "" : "/"}${RESCUE_FORM_PATH}`;
+  const reply = isYes
+    ? "Got it. We’re calling you back now."
+    : `Thanks—reply ${keyword} for a call back, or request here: ${formUrl}`;
+
+  return res.type("text/xml").send(twiml(`<Message>${escapeXml(reply)}</Message>`));
+});
+
+// Twilio: callback bridge TwiML (used by createTwilioRescueCallbackCall)
+app.post("/twilio/rescue-callback", requireTwilioAuth, (req, res) => {
+  const leadRaw = req.query?.lead ? String(req.query.lead).trim() : "";
+  const lead = normalizeCallerNumber(leadRaw);
+  if (!isValidCallerNumber(lead)) {
+    return res.type("text/xml").send(twiml("<Say>Invalid lead number.</Say><Hangup/>"));
+  }
+  return res
+    .type("text/xml")
+    .send(
+      twiml(
+        `<Say>Connecting you to a missed call lead.</Say><Dial answerOnBridge="true" timeout="20"><Number>${escapeXml(
+          lead
+        )}</Number></Dial>`
+      )
+    );
 });
 
 // API: create event (webhook simulator)
@@ -803,6 +1246,16 @@ app.post("/api/webhooks/call", requireDemoAuth, requireSimulatorEnabled, (req, r
       "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp) VALUES (?, ?, ?, ?, 0)"
     )
     .run(createdAt, callerNumber, status, source);
+
+  try {
+    ensureSlaDefaultsForEventId(insert.lastInsertRowid);
+    insertAutomationEvent({
+      callEventId: insert.lastInsertRowid,
+      kind: "lead_created",
+      dedupeKey: `lead_created:${insert.lastInsertRowid}`,
+      payload: { source, status },
+    });
+  } catch {}
 
   const row = db
     .prepare("SELECT * FROM CallEvent WHERE id = ?")
@@ -849,6 +1302,16 @@ app.post("/api/landing/form", (req, res) => {
     )
     .run(createdAt, phoneRaw, note || null);
 
+  try {
+    ensureSlaDefaultsForEventId(insert.lastInsertRowid);
+    insertAutomationEvent({
+      callEventId: insert.lastInsertRowid,
+      kind: "lead_created",
+      dedupeKey: `lead_created:${insert.lastInsertRowid}`,
+      payload: { source: "landing_form", status: "missed" },
+    });
+  } catch {}
+
   const row = db
     .prepare("SELECT * FROM CallEvent WHERE id = ?")
     .get(insert.lastInsertRowid);
@@ -868,6 +1331,60 @@ app.get("/api/calls", requireDemoAuth, (req, res) => {
     .all(limit);
 
   return res.json(rows.map(rowToJson));
+});
+
+// API: assign owner
+app.post("/api/calls/:id/assign", requireDemoAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+  const assignedToRaw = req.body?.assignedTo;
+  const assignedTo =
+    assignedToRaw === null ? null : clampStr(assignedToRaw, 60) || null;
+
+  const result = db.prepare("UPDATE CallEvent SET assignedTo = ? WHERE id = ?").run(assignedTo, id);
+  if (result.changes === 0) return res.status(404).json({ error: "Not found" });
+  const row = getCallEventById(id);
+  return res.json(rowToJson(row));
+});
+
+// API: run automation pass (demo-safe; logs events instead of sending)
+app.post("/api/automation/run", requireDemoAuth, (req, res) => {
+  try {
+    const result = runAutomationPass();
+    return res.json(result);
+  } catch (e) {
+    return res
+      .status(500)
+      .json({ error: "Automation failed", message: e?.message || "Unknown error" });
+  }
+});
+
+// API: recent automation events
+app.get("/api/automation/events", requireDemoAuth, (req, res) => {
+  const rawLimit = req.query?.limit ? Number(req.query.limit) : 50;
+  const limit = Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(200, Math.floor(rawLimit)))
+    : 50;
+
+  const rows = db
+    .prepare("SELECT * FROM AutomationEvent ORDER BY createdAt DESC LIMIT ?")
+    .all(limit);
+  const json = rows.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt,
+    callEventId: r.callEventId ?? null,
+    kind: r.kind,
+    status: r.status,
+    payload: (() => {
+      try {
+        return r.payload ? JSON.parse(r.payload) : null;
+      } catch {
+        return r.payload ?? null;
+      }
+    })(),
+  }));
+  return res.json(json);
 });
 
 function normalizeOutcome(raw) {

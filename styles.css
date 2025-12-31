@@ -45,6 +45,10 @@
 
   --container:1120px;
   --ease:cubic-bezier(.2,.8,.2,1);
+
+  /* Landing section tints (used sparingly for “chapter” separation) */
+  --chapter-tint: rgba(2,6,23,.02);
+  --chapter-line: rgba(226,232,240,.85);
 }
 
 *{box-sizing:border-box}
@@ -67,20 +71,6 @@ body{
    Landing-only “high budget” polish
    (Scoped so dashboard styling stays safe)
 ====================================================== */
-.landing-page a.brand{ text-decoration:none !important; }
-.landing-page .topbar{
-  box-shadow:0 12px 34px rgba(2,6,23,.08);
-}
-.landing-page .topbar__inner{
-  padding:0;
-}
-.landing-page .brand__name{
-  font-size:16px;
-  letter-spacing:-.02em;
-}
-.landing-page .brand__tag{
-  opacity:.9;
-}
 
 .landing-page .hero{
   padding:28px 0 22px;
@@ -121,14 +111,29 @@ body{
 }
 
 .landing-page .form-card{
-  border-color:rgba(15,23,42,.10);
-  background:var(--surface);
-  box-shadow:var(--shadow-md);
+  /* Make the form feel more “foreground” without changing the color system */
+  border:1px solid rgba(15,23,42,.14);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.94));
+  box-shadow:
+    0 26px 70px rgba(2,6,23,.14);
+  position:relative;
+}
+.landing-page .form-card::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.92),
+    inset 0 0 0 1px rgba(255,255,255,.22);
 }
 .landing-page .form-card__head{
   background:
     radial-gradient(520px 220px at 0% 0%, rgba(11,95,255,.06), rgba(11,95,255,0) 58%),
     linear-gradient(180deg, rgba(248,250,252,.92), rgba(255,255,255,0));
+  border-bottom:1px solid rgba(15,23,42,.08);
 }
 .landing-page .field label{
   letter-spacing:-.01em;
@@ -166,7 +171,6 @@ body{
 
 @media (max-width: 980px){
   .landing-page .hero__h1{font-size:30px}
-  .landing-page .topbar__inner{padding:0}
 }
 
 a{color:inherit}
@@ -214,127 +218,122 @@ button:active,a.btn:active{transform:translateY(0)}
   margin:0 auto;
 }
 
+/* ======================================================
+   HEADER (landing + shared): clean, two-zone masthead
+====================================================== */
 .topbar{
   position:sticky;
   top:0;
   z-index:20;
-  background:rgba(255,255,255,.92);
-  backdrop-filter:saturate(1.2) blur(10px);
-  border-bottom:1px solid var(--line);
-  box-shadow:0 10px 24px rgba(2,6,23,.06);
+  background:#fff;
+  border-bottom:1px solid rgba(15,23,42,0.08);
+  box-shadow:none;
 }
 .topbar__inner{
+  width:min(1200px, calc(100% - 32px));
+  margin:0 auto;
+  height:140px; /* desktop */
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:12px;
-  height:72px;
-  padding:0;
+  gap:18px;
 }
-.topbar__right{
-  display:flex;
-  align-items:center;
-  flex:0 0 auto;
+.topbar a.brand{
+  text-decoration:none !important; /* override global underline rule (higher specificity there) */
+}
+.topbar a.brand *{
+  text-decoration:none !important;
+}
+.topbar a.brand:hover{
+  opacity:1; /* avoid "dim on hover" affecting logo edge perception */
 }
 .brand{
   display:flex;
   align-items:center;
-  gap:12px;
-  flex:1 1 auto;
+  gap:14px;
   min-width:0;
   text-decoration:none;
+  color:inherit;
 }
 .brand__logo{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:6px 10px;
-  border-radius:14px;
-  background:rgba(255,255,255,.96);
-  border:1px solid rgba(15,23,42,.08);
-  box-shadow:0 8px 18px rgba(2,6,23,.06);
-  min-width:0;
-  max-width:100%;
-}
-.brand__text{
+  flex:0 0 auto;
+  line-height:0;
   display:flex;
-  flex-direction:column;
-  gap:2px;
-  min-width:0;
+  align-items:center;
+  background:transparent; /* no box, blend with header */
+  border:none;
+  padding:0;
 }
 .brand__mark{
-  /* Keep logo sizing consistent */
-  height:38px;
+  height:140px !important; /* desktop: larger */
   width:auto;
-  max-width:min(220px, 100%);
   display:block;
   object-fit:contain;
-  filter:none; /* avoid emphasizing the logo's rectangular bounds */
+  max-width:none;
+  clip-path: inset(2px); /* trims faint edge/box from the raster asset */
 }
 .brand__name{
+  font-size:19px;
   font-weight:700;
+  line-height:1.12;
   letter-spacing:-.02em;
-  font-size:16px;
-  line-height:1.15;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  max-width:320px;
+  white-space:normal;
 }
-.brand__tag{
-  font-size:12.5px;
-  color:var(--muted);
-  letter-spacing:-.01em;
-  line-height:1.2;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  max-width:320px;
-}
-
-.phone-link{
+.call-cta{
+  flex:0 0 auto;
+  height:44px;
   display:inline-flex;
   align-items:center;
   gap:10px;
-  height:44px;
   padding:0 16px;
-  border:1px solid var(--border);
   border-radius:999px;
+  border:1px solid rgba(15,23,42,0.10);
+  background:rgba(255,255,255,.85);
+  box-shadow:none;
   text-decoration:none;
-  font-weight:700;
-  font-size:15px;
+  color:inherit;
+  font-size:14px;
+  font-weight:650;
   letter-spacing:-.01em;
-  background:#fff;
-  box-shadow:var(--shadow-sm);
-  transition:transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s var(--ease);
+  white-space:nowrap;
 }
-.phone-link:hover{
-  transform:translateY(-1px);
-  border-color:rgba(11,95,255,.22);
-  box-shadow:var(--shadow-md);
-}
-.phone-link:active{
-  transform:translateY(1px);
-  box-shadow:var(--shadow-sm);
-}
-.phone-link__icon{
-  color:var(--primary);
+.call-cta__icon{
   width:18px;
   height:18px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
+  color:var(--primary);
   flex:0 0 18px;
-  border-radius:0;
-  background:transparent;
-  border:0;
-  opacity:1;
 }
-.phone-link__icon svg{
+.call-cta__icon svg{
   width:18px;
   height:18px;
   display:block;
-  overflow:visible;
+}
+
+@media (max-width: 720px){
+  .topbar__inner{height:136px} /* mobile: sized so logo visually matches phone pill */
+  .brand{gap:12px}
+  /* Mobile: hide text, BIG logo like AireServ */
+  .brand__mark{height:128px !important}
+  .brand__name{display:none}
+  .call-cta{
+    padding:0 14px;
+    gap:8px;
+  }
+}
+
+@media (max-width: 390px){
+  /* Keep brand readable; let it wrap while preserving tap target */
+  .topbar__inner{gap:12px}
+  .call-cta{
+    width:44px;
+    padding:0;
+    justify-content:center;
+    border-radius:999px;
+  }
+  .call-cta__number{display:none}
 }
 
 .hero{
@@ -836,6 +835,234 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   padding:68px 0;
 }
 .section--tight{padding:42px 0}
+
+/* ======================================================
+   Lower-half landing redesign (“$100M brand” chapters)
+   Target: Service Areas, FAQ, Final CTA, Footer (+ mobile)
+====================================================== */
+
+/* Service Areas (chapter) */
+.landing-page .section--areas{
+  padding:84px 0;
+  background:
+    radial-gradient(760px 260px at 18% 0%, rgba(11,95,255,.05), rgba(11,95,255,0) 62%),
+    var(--chapter-tint);
+  border-top:1px solid var(--chapter-line);
+  border-bottom:1px solid var(--chapter-line);
+}
+.landing-page .section--areas .section__head{
+  text-align:center;
+}
+.landing-page .section--areas .chips{
+  justify-content:center;
+  max-width:920px;
+  margin:18px auto 0;
+  gap:12px 12px;
+}
+.landing-page .section--areas .areas-help{
+  text-align:center;
+  margin-top:14px;
+}
+.landing-page .section--areas .chip{
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid rgba(15,23,42,.10);
+  background:rgba(255,255,255,.66);
+  backdrop-filter:saturate(1.05) blur(8px);
+  box-shadow:none;
+  font-weight:700;
+  font-size:13px;
+  letter-spacing:-.01em;
+}
+.landing-page .section--areas .chip:hover{
+  background:rgba(255,255,255,.74);
+  border-color:rgba(15,23,42,.14);
+}
+
+/* FAQ (chapter) */
+.landing-page .section--faq{
+  padding:92px 0;
+  background:var(--bg);
+}
+.landing-page .section--faq .section__head{
+  text-align:center;
+}
+.landing-page .section--faq .faq{
+  max-width:920px;
+  margin:26px auto 0;
+  gap:16px;
+}
+/* Curate to the top 6; keep the rest in DOM for future, but not visible */
+.landing-page .section--faq .faq > .faq__item:nth-child(n+7){
+  display:none;
+}
+.landing-page .section--faq .faq__item{
+  padding:18px 18px;
+  border:1px solid rgba(15,23,42,.10);
+  border-radius:20px;
+  background:rgba(255,255,255,.92);
+  box-shadow:0 16px 46px rgba(2,6,23,.06);
+  transition:border-color .35s var(--ease), box-shadow .35s var(--ease), background-color .35s var(--ease);
+  transform:none;
+}
+.landing-page .section--faq .faq__item:hover{
+  background:#fff;
+  border-color:rgba(15,23,42,.12);
+  box-shadow:0 20px 56px rgba(2,6,23,.08);
+}
+.landing-page .section--faq .faq__item summary{
+  padding:0;
+  font-weight:850;
+  font-size:16px;
+  letter-spacing:-.02em;
+  line-height:1.25;
+}
+.landing-page .section--faq .faq__item summary::after{
+  display:none !important; /* remove chevrons / visual noise */
+}
+.landing-page .section--faq .faq__body{
+  max-width:72ch;
+  color:rgba(75,85,105,.96);
+  font-size:14px;
+  line-height:1.7;
+  margin-top:10px;
+  padding:0;
+  /* slower, calmer accordion */
+  max-height:0;
+  opacity:0;
+  transform:translateY(-2px);
+  transition:max-height .62s var(--ease), opacity .36s var(--ease), transform .54s var(--ease);
+  will-change:max-height;
+}
+.landing-page .section--faq .faq__item[open] .faq__body{
+  max-height:720px;
+  opacity:1;
+  transform:translateY(0);
+}
+
+/* Final CTA (chapter) */
+.landing-page .section--final-cta{
+  padding:92px 0;
+  background:
+    radial-gradient(860px 320px at 18% 0%, rgba(11,95,255,.10), rgba(11,95,255,0) 62%),
+    radial-gradient(760px 280px at 92% 10%, rgba(249,115,22,.08), rgba(249,115,22,0) 64%),
+    linear-gradient(180deg, rgba(248,250,252,.92), rgba(255,255,255,1));
+  border-top:1px solid rgba(226,232,240,.92);
+}
+.landing-page .section--final-cta .cta-band__inner{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:22px;
+  align-items:center;
+  padding:28px 28px;
+  border-radius:26px;
+  border:1px solid rgba(15,23,42,.10);
+  background:rgba(255,255,255,.82);
+  backdrop-filter:saturate(1.1) blur(10px);
+  box-shadow:0 26px 72px rgba(2,6,23,.10);
+}
+.landing-page .section--final-cta .cta-band__copy h2{
+  font-size:26px;
+  letter-spacing:-.03em;
+  margin:0 0 8px;
+}
+.landing-page .section--final-cta .cta-band__copy p{
+  margin:0;
+  max-width:62ch;
+  font-size:14.5px;
+  line-height:1.6;
+  color:rgba(75,85,105,.96);
+  text-wrap:balance;
+}
+.landing-page .section--final-cta .cta-band__actions{
+  justify-content:flex-end;
+  gap:10px;
+}
+
+/* Footer (chapter) */
+.landing-page .footer{
+  padding:56px 0 84px;
+  background:
+    radial-gradient(820px 260px at 20% 0%, rgba(2,6,23,.03), rgba(2,6,23,0) 64%),
+    var(--chapter-tint);
+  border-top:1px solid var(--chapter-line);
+}
+.landing-page .footer__grid{
+  grid-template-columns:1.35fr 1fr;
+  gap:46px;
+  align-items:start;
+}
+.landing-page .footer__brand{
+  font-size:15px;
+  letter-spacing:-.02em;
+}
+.landing-page .footer__label{
+  font-size:12px;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:rgba(75,85,105,.92);
+}
+.landing-page .footer__line{
+  margin-top:10px;
+  font-size:13.5px;
+  line-height:1.65;
+  color:rgba(75,85,105,.96);
+}
+.landing-page .footer__line a{
+  text-decoration:none;
+  border-bottom:1px solid rgba(15,23,42,.20);
+}
+.landing-page .footer__line a:hover{
+  border-bottom-color:rgba(11,95,255,.45);
+  opacity:1;
+}
+
+/* Mobile: preserve hierarchy, remove CTA duplication */
+.landing-page .mobile-bar{
+  transition:opacity .30s var(--ease), transform .30s var(--ease);
+}
+.landing-page .mobile-bar--hidden{
+  opacity:0;
+  transform:translateY(12px);
+  pointer-events:none;
+}
+
+@media (max-width: 980px){
+  .landing-page .section--areas{padding:72px 0}
+  .landing-page .section--faq{padding:80px 0}
+  .landing-page .section--final-cta{padding:80px 0}
+  .landing-page .section--final-cta .cta-band__inner{
+    grid-template-columns:1fr;
+    padding:22px 20px;
+  }
+  .landing-page .section--final-cta .cta-band__actions{
+    justify-content:flex-start;
+  }
+}
+
+@media (max-width: 768px){
+  .landing-page .section--areas{padding:64px 0}
+  .landing-page .section--faq{padding:72px 0}
+  .landing-page .section--final-cta{padding:72px 0}
+  .landing-page .section--faq .faq{
+    margin-top:20px;
+    gap:14px;
+  }
+  .landing-page .section--faq .faq__item{
+    padding:16px 16px;
+    border-radius:18px;
+  }
+  .landing-page .section--final-cta .cta-band__copy h2{
+    font-size:22px;
+  }
+  .landing-page .footer{
+    padding:44px 0 72px;
+  }
+  .landing-page .footer__grid{
+    grid-template-columns:1fr;
+    gap:26px;
+  }
+}
 
 /* ======================================================
    Services section: restrained premium color system
@@ -1439,8 +1666,6 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 /* tighten hero on small phones to keep CTA + form above fold */
 @media (max-width: 420px){
   body{padding-bottom:76px}
-  .topbar__inner{height:64px}
-  .phone-link{padding:0 12px; font-size:13.5px}
   .badge--muted{display:none}
   .hero__h1{font-size:26px}
   .hero__subhead{font-size:13px}
@@ -1458,36 +1683,86 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   }
 }
 
-/* Extra-tight phones: prioritize logo readability by simplifying the call pill */
-@media (max-width: 360px){
-  .topbar__inner{gap:8px}
-  .phone-link__icon{display:none !important}
-  .phone-link{gap:0; padding:0 12px; font-size:13.5px}
-}
-
 @media (max-width: 720px){
-  .topbar__inner{height:64px}
-  /* Keep the logo readable on mobile */
-  .brand__logo{padding:5px 9px}
-  .brand__mark{height:40px}
-  /* Ensure the company name reads (avoid ellipsis on narrow widths) */
-  .brand__text{max-width:210px}
-  .brand__name{
-    max-width:210px;
-    white-space:normal;
-    overflow:hidden;
-    text-overflow:clip;
-    display:-webkit-box;
-    -webkit-line-clamp:2;
-    -webkit-box-orient:vertical;
-    line-height:1.1;
-    font-size:14.5px;
-  }
 }
 
 @media (max-width: 520px){
-  .brand__tag{display:none}
-  .phone-link{padding:0 14px; font-size:14px}
+}
+
+/* Touch devices: remove “sticky hover” + reduce friction */
+@media (hover: none){
+  a:hover{opacity:1}
+  button:hover,
+  a.btn:hover{
+    transform:none;
+    opacity:1;
+    box-shadow:var(--shadow-sm);
+  }
+
+  .phone-link:hover{
+    transform:none;
+    border-color:rgba(15,23,42,.12);
+    box-shadow:var(--shadow-sm);
+  }
+
+  .rating__inner:hover{
+    border-color:var(--line);
+    background:rgba(255,255,255,.85);
+  }
+
+  /* Inputs: avoid hover state sticking after tap */
+  input:hover,
+  select:hover,
+  textarea:hover{
+    border-color:rgba(15,23,42,.12);
+  }
+
+  /* Cards and interactive content blocks: no lift on touch */
+  .card:hover{
+    transform:none;
+    box-shadow:var(--shadow-sm);
+    border-color:rgba(15,23,42,.10);
+  }
+  .testimonial:hover{
+    transform:none;
+    box-shadow:var(--shadow-sm);
+  }
+  .carousel__btn:hover{
+    border-color:rgba(15,23,42,.10);
+    box-shadow:none;
+  }
+
+  /* Service area chips + FAQ items */
+  .chip:hover{
+    background:rgba(255,255,255,.88);
+    border-color:var(--line);
+  }
+  .landing-page .section--areas .chip:hover{
+    background:rgba(255,255,255,.66);
+    border-color:rgba(15,23,42,.10);
+  }
+  .faq__item:hover,
+  .landing-page .section--faq .faq__item:hover{
+    transform:none;
+    border-color:rgba(15,23,42,.10);
+    box-shadow:0 16px 46px rgba(2,6,23,.06);
+    background:rgba(255,255,255,.92);
+  }
+}
+
+/* Touch focus: keep visible but softer (less “techy”) */
+@media (hover: none) and (pointer: coarse){
+  :where(a, button, input, select, textarea, summary):focus-visible{
+    outline:2px solid rgba(11,95,255,.24);
+    outline-offset:2px;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.7),
+      0 0 0 3px rgba(11,95,255,.10);
+  }
 }
 
 /* Respect reduced motion preferences (also plays nice with AOS) */

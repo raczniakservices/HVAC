@@ -667,6 +667,53 @@ function setupPhoneFormatting(form) {
   });
 }
 
+function setupMobileBarAutoHide() {
+  const bar = document.querySelector(".mobile-bar");
+  if (!bar) return;
+
+  const cta = document.querySelector(".section--final-cta");
+  if (!cta) return;
+
+  // Only relevant on mobile (bar is hidden via CSS on desktop anyway).
+  const mq = window.matchMedia ? window.matchMedia("(max-width: 768px)") : null;
+  const isMobile = () => (mq ? mq.matches : window.innerWidth <= 768);
+
+  /** @type {IntersectionObserver | null} */
+  let io = null;
+
+  function teardown() {
+    if (io) io.disconnect();
+    io = null;
+    bar.classList.remove("mobile-bar--hidden");
+  }
+
+  function setup() {
+    teardown();
+    if (!isMobile()) return;
+
+    // Hide the sticky bar when the final CTA chapter is visible (prevents duplicate CTAs on mobile).
+    io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const shouldHide = Boolean(entry && entry.isIntersecting);
+        bar.classList.toggle("mobile-bar--hidden", shouldHide);
+      },
+      {
+        root: null,
+        threshold: 0.15,
+      }
+    );
+    io.observe(cta);
+  }
+
+  setup();
+  if (mq) mq.addEventListener("change", setup);
+  window.addEventListener("resize", () => {
+    // Small debounce via rAF: avoids thrash during orientation changes.
+    window.requestAnimationFrame(setup);
+  });
+}
+
 async function postToFormspree(payload) {
   // Formspree accepts JSON. We keep it simple.
   const res = await fetch(FORM_ENDPOINT, {
@@ -714,6 +761,7 @@ function main() {
   }
 
   setupSmoothScroll();
+  setupMobileBarAutoHide();
 
   const forms = [$("#serviceForm")].filter(Boolean);
   if (forms.length === 0) return;

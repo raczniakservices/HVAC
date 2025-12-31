@@ -63,12 +63,20 @@
             <div class="summary-value" id="sumMissed">—</div>
           </div>
           <div class="summary-item">
+            <div class="summary-label">Overdue</div>
+            <div class="summary-value" id="sumOverdue">—</div>
+          </div>
+          <div class="summary-item">
             <div class="summary-label">Followed up</div>
             <div class="summary-value" id="sumFollowedUp">—</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">≤ 5 min</div>
             <div class="summary-value" id="sumWithin5">—</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Escalated</div>
+            <div class="summary-value" id="sumEscalated">—</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">Booked</div>
@@ -94,6 +102,8 @@
                 <th>Status</th>
                 <th>Call length</th>
                 <th>Type</th>
+                <th>SLA</th>
+                <th>Owner</th>
                 <th>Response time</th>
                 <th>Result</th>
                 <th class="actions-th">Actions</th>
@@ -101,7 +111,7 @@
             </thead>
             <tbody id="rows">
               <tr>
-                <td colspan="8" class="muted">Loading…</td>
+                <td colspan="10" class="muted">Loading…</td>
               </tr>
             </tbody>
           </table>
@@ -112,6 +122,17 @@
         <p class="micro-note muted" style="margin-top: 10px;">
           Auto-refreshes every ~10 seconds when this tab is visible.
         </p>
+
+        <div class="section__head" style="margin-top:18px;">
+          <h3 style="margin:0;">Automation log</h3>
+          <p class="muted" style="margin:6px 0 0;">
+            Demo-safe mode: we <strong>log</strong> escalations instead of sending texts/emails.
+          </p>
+        </div>
+        <div class="table-wrap" style="padding:14px; margin-top:10px;">
+          <div id="automationEmpty" class="muted">Loading automation events…</div>
+          <div id="automationList" class="automation-list" hidden></div>
+        </div>
       </div>
     </main>
 
