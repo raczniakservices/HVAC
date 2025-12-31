@@ -275,8 +275,6 @@ function startAutoRefresh() {
     if (mutatingIds.size > 0) return;
     // Avoid overwriting UI while user is interacting with controls
     if (isInteracting) return;
-    // Keep automation state updated (demo-safe: logs only; no SMS/email sent)
-    fetch(withKey("/api/automation/run"), { method: "POST" }).catch(() => {});
     loadCalls({ silent: true });
   }, 10_000);
 }
@@ -445,18 +443,7 @@ function setSummary(events) {
   // - For calls: missed and not followed up
   // - For forms: treated as unhandled until followed up (status is stored as 'missed' for simplicity)
   const missed = events.filter((e) => e.status === "missed" && !e.followedUp).length;
-  const overdue = events.filter((e) => {
-    if (e?.outcome) return false;
-    const dueAt = e?.slaDueAt ? Date.parse(e.slaDueAt) : null;
-    return Number.isFinite(dueAt) && Date.now() > dueAt;
-  }).length;
   const followedUp = events.filter((e) => !!e.followedUp).length;
-  const within5 = events.filter((e) => {
-    if (!e.followedUp) return false;
-    const rs = computeResponseSeconds(e);
-    return Number.isFinite(rs) && rs <= 300;
-  }).length;
-  const escalated = events.filter((e) => !!e?.escalatedAt && !e?.outcome).length;
   const booked = events.filter((e) => e.outcome === "booked").length;
   const lost = events.filter((e) => {
     if (e.outcome === "already_hired" || e.outcome === "wrong_number") return true;
@@ -465,10 +452,7 @@ function setSummary(events) {
   }).length;
 
   set("sumMissed", missed);
-  set("sumOverdue", overdue);
   set("sumFollowedUp", followedUp);
-  set("sumWithin5", within5);
-  set("sumEscalated", escalated);
   set("sumBooked", booked);
   set("sumLost", lost);
 }
@@ -487,55 +471,7 @@ function formatAutomationKind(kind) {
   return { title: k || "Event", pill: "Event", pillClass: "" };
 }
 
-function renderAutomationEvents(items) {
-  const empty = document.getElementById("automationEmpty");
-  const list = document.getElementById("automationList");
-  if (!list) return;
-
-  const rows = Array.isArray(items) ? items : [];
-  if (rows.length === 0) {
-    if (empty) empty.textContent = "No automation events yet.";
-    list.hidden = true;
-    return;
-  }
-
-  if (empty) empty.textContent = "";
-  list.hidden = false;
-  list.innerHTML = rows
-    .map((ev) => {
-      const info = formatAutomationKind(ev?.kind);
-      const at = ev?.createdAt ? formatTimeFull(ev.createdAt) : "";
-      const callId = ev?.callEventId ? `Lead #${ev.callEventId}` : "—";
-      const due = ev?.payload?.dueAt ? `Due: ${formatTimeShort(ev.payload.dueAt)}` : "";
-      const who = ev?.payload?.assignedTo ? `Owner: ${ev.payload.assignedTo}` : "";
-      const metaParts = [callId, who, due].filter(Boolean);
-      return `
-        <div class="automation-item">
-          <div class="automation-item__left">
-            <div class="automation-item__title">${escapeHtml(info.title)}</div>
-            <div class="automation-item__meta">${escapeHtml([at, ...metaParts].filter(Boolean).join(" • ") || "—")}</div>
-          </div>
-          <div class="automation-item__pill ${escapeHtml(info.pillClass)}">${escapeHtml(info.pill)}</div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
-async function fetchAutomationEvents() {
-  const key = getKey();
-  const res = await fetch(withKey("/api/automation/events?limit=8"), {
-    headers: { ...(key ? { "x-demo-key": key } : {}) },
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = text ? JSON.parse(text) : [];
-  } catch {
-    json = [];
-  }
-  return Array.isArray(json) ? json : [];
-}
+// Automation log UI removed (keeps backend behavior unchanged; just not shown).
 
 function renderRows(events) {
   const tbody = $("#rows");
@@ -547,7 +483,7 @@ function renderRows(events) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
-    tbody.innerHTML = `<tr><td colspan="10" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="muted">${escapeHtml(msg)}</td></tr>`;
     if (cards) {
       cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
     }
@@ -559,9 +495,6 @@ function renderRows(events) {
       const isMissed = ev.status === "missed";
       // Follow-up is now driven by selecting a Result (Outcome).
       // We still compute responseSeconds from followedUpAt in the backend for metrics.
-
-      const rs = computeResponseSeconds(ev);
-      const responseText = typeof rs === "number" ? formatDuration(rs) : "—";
 
       const sourceInfo = formatSource(ev.source);
 
@@ -600,31 +533,11 @@ function renderRows(events) {
         outcomeDisplay += `<div class="muted" style="font-size:11px; margin-top:2px;">${escapeHtml(formatTimeShort(ev.outcomeAt))}</div>`;
       }
 
-      const isEditingOutcome = editingOutcomeIds.has(String(ev.id));
-      const outcomeControlsHtml = currentOutcome
-        ? `
-            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
-              <div style="min-width:0;">
-                ${outcomeDisplay}
-              </div>
-              <div style="flex:0 0 auto;">
-                <button class="action-btn js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
-              </div>
-            </div>
-            <div style="margin-top:8px; ${isEditingOutcome ? "" : "display:none;"}">
-              <select class="outcome-select js-outcome" aria-label="Set Outcome">
-                ${outcomeOptionsHtml}
-              </select>
-              <div style="margin-top:6px;">
-                <button class="action-btn action-btn--quiet js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
-              </div>
-            </div>
-          `
-        : `
-            <select class="outcome-select js-outcome" aria-label="Set Outcome">
-              ${outcomeOptionsHtml}
-            </select>
-          `;
+      const outcomeControlsHtml = `
+        <select class="outcome-select js-outcome" aria-label="Set Result">
+          ${outcomeOptionsHtml}
+        </select>
+      `;
 
       // Row intent class (used for subtle left bar only; no full-row backgrounds)
       let rowClass = "";
@@ -635,14 +548,11 @@ function renderRows(events) {
       else if (statusClass === "missed") rowClass = "row-danger";
       else rowClass = "row-neutral";
 
-      const sla = formatSla(ev);
-      const ownerLabel = formatOwner(ev);
-
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
-            <div class="caller-cell__num">${escapeHtml(ev.callerNumber)}</div>
+            <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
             ${detailsHtml}
           </td>
           <td><span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span></td>
@@ -652,24 +562,11 @@ function renderRows(events) {
               ${sourceInfo.label}
             </span>
           </td>
-          <td><span class="${escapeHtml(sla.cls)}">${escapeHtml(sla.label)}</span></td>
-          <td>
-            <div class="owner-cell">
-              <span class="owner-cell__name">${escapeHtml(ownerLabel)}</span>
-              <button class="action-btn action-btn--quiet js-assign" type="button" title="Assign owner">Assign</button>
-            </div>
-          </td>
-          <td>${escapeHtml(responseText)}</td>
           <td style="overflow:visible;">
             ${outcomeControlsHtml}
           </td>
-          <td style="text-align:right; overflow:visible;">
-            <div class="row-actions">
-              <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">
-                Call
-              </a>
-              <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
-            </div>
+          <td class="actions-td" style="overflow:visible;">
+            <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
           </td>
         </tr>
       `;
@@ -715,27 +612,11 @@ function renderRows(events) {
           outcomeDisplay += `<span class="muted" style="font-size:12px; margin-left:8px;">${escapeHtml(formatTimeShort(ev.outcomeAt))}</span>`;
         }
 
-        const isEditingOutcome = editingOutcomeIds.has(String(ev.id));
-        const outcomeControlsHtml = currentOutcome
-          ? `
-              <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                <div style="min-width:0;">${outcomeDisplay}</div>
-                <button class="action-btn js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
-              </div>
-              <div style="margin-top:10px; ${isEditingOutcome ? "" : "display:none;"}">
-                <select class="outcome-select js-outcome" aria-label="Set Outcome">
-                  ${outcomeOptionsHtml}
-                </select>
-                <div style="margin-top:8px;">
-                  <button class="action-btn action-btn--quiet js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
-                </div>
-              </div>
-            `
-          : `
-              <select class="outcome-select js-outcome" aria-label="Set Outcome">
-                ${outcomeOptionsHtml}
-              </select>
-            `;
+        const outcomeControlsHtml = `
+          <select class="outcome-select js-outcome" aria-label="Set Result">
+            ${outcomeOptionsHtml}
+          </select>
+        `;
 
         return `
           <div class="dashboard-card" data-id="${escapeHtml(ev.id)}">
@@ -761,15 +642,12 @@ function renderRows(events) {
                 <div class="dashboard-kv__value">${escapeHtml(responseText)}</div>
               </div>
               <div class="dashboard-kv">
-                <div class="dashboard-kv__label">SLA</div>
-                <div class="dashboard-kv__value"><span class="${escapeHtml(formatSla(ev).cls)}">${escapeHtml(formatSla(ev).label)}</span></div>
+                <div class="dashboard-kv__label">Result</div>
+                <div class="dashboard-kv__value">${escapeHtml(getOutcomeOption(ev?.outcome).label || "—")}</div>
               </div>
               <div class="dashboard-kv">
-                <div class="dashboard-kv__label">Owner</div>
-                <div class="dashboard-kv__value" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                  <span style="font-weight:900;">${escapeHtml(formatOwner(ev))}</span>
-                  <button class="action-btn action-btn--quiet js-assign" type="button" title="Assign owner">Assign</button>
-                </div>
+                <div class="dashboard-kv__label">Status</div>
+                <div class="dashboard-kv__value">${escapeHtml(statusLabel || "—")}</div>
               </div>
             </div>
 
@@ -811,8 +689,6 @@ async function loadCalls({ silent, force } = {}) {
   if (btn && !silent) btn.disabled = true;
   const epochAtStart = mutationEpoch;
   try {
-    // keep automation state fresh (demo-safe: logs only)
-    fetch(withKey("/api/automation/run"), { method: "POST" }).catch(() => {});
     const calls = await fetchCalls();
 
     // If a mutation started during this fetch, don't overwrite UI with stale data.
@@ -834,9 +710,6 @@ async function loadCalls({ silent, force } = {}) {
     const filtered = applyDemoFilter(eventsCache);
     renderRows(filtered);
     setSummary(filtered);
-    fetchAutomationEvents()
-      .then(renderAutomationEvents)
-      .catch(() => renderAutomationEvents([]));
     setLastFetch(new Date());
     setUpdatedAgoText();
   } catch (e) {

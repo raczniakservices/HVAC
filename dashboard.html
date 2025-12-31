@@ -63,20 +63,8 @@
             <div class="summary-value" id="sumMissed">—</div>
           </div>
           <div class="summary-item">
-            <div class="summary-label">Overdue</div>
-            <div class="summary-value" id="sumOverdue">—</div>
-          </div>
-          <div class="summary-item">
             <div class="summary-label">Followed up</div>
             <div class="summary-value" id="sumFollowedUp">—</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">≤ 5 min</div>
-            <div class="summary-value" id="sumWithin5">—</div>
-          </div>
-          <div class="summary-item">
-            <div class="summary-label">Escalated</div>
-            <div class="summary-value" id="sumEscalated">—</div>
           </div>
           <div class="summary-item">
             <div class="summary-label">Booked</div>
@@ -102,16 +90,13 @@
                 <th>Status</th>
                 <th>Call length</th>
                 <th>Type</th>
-                <th>SLA</th>
-                <th>Owner</th>
-                <th>Response time</th>
                 <th>Result</th>
                 <th class="actions-th">Actions</th>
               </tr>
             </thead>
             <tbody id="rows">
               <tr>
-                <td colspan="10" class="muted">Loading…</td>
+                <td colspan="7" class="muted">Loading…</td>
               </tr>
             </tbody>
           </table>
@@ -123,16 +108,6 @@
           Auto-refreshes every ~10 seconds when this tab is visible.
         </p>
 
-        <div class="section__head section__head--sub">
-          <h3>Automation log</h3>
-          <p class="muted">
-            Demo-safe mode: we <strong>log</strong> escalations instead of sending texts/emails.
-          </p>
-        </div>
-        <div class="table-wrap table-wrap--padded">
-          <div id="automationEmpty" class="muted">Loading automation events…</div>
-          <div id="automationList" class="automation-list" hidden></div>
-        </div>
       </div>
     </main>
 

@@ -238,7 +238,7 @@ button:active,a.btn:active{transform:translateY(0)}
 }
 
 /* ======================================================
-   HEADER (landing + shared): clean, two-zone masthead
+   TOPBAR (shared base)
 ====================================================== */
 .topbar{
   position:sticky;
@@ -251,7 +251,7 @@ button:active,a.btn:active{transform:translateY(0)}
 .topbar__inner{
   width:min(1200px, calc(100% - 32px));
   margin:0 auto;
-  height:140px; /* desktop */
+  height:72px; /* default (dashboard) */
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -284,7 +284,7 @@ button:active,a.btn:active{transform:translateY(0)}
   padding:0;
 }
 .brand__mark{
-  height:140px !important; /* desktop: larger */
+  height:48px; /* default */
   width:auto;
   display:block;
   object-fit:contain;
@@ -331,17 +331,21 @@ button:active,a.btn:active{transform:translateY(0)}
   display:block;
 }
 
+/* ======================================================
+   Landing masthead (landing only — keeps dashboard topbar normal size)
+====================================================== */
+.landing-page .topbar__inner{ height:140px; }
+.landing-page .brand__mark{ height:140px !important; }
 @media (max-width: 720px){
-  .topbar__inner{height:136px} /* mobile: sized so logo visually matches phone pill */
-  .brand{gap:12px}
-  /* Mobile: hide text, BIG logo like AireServ */
-  .brand__mark{height:128px !important}
-  .brand__name{display:none}
-  .call-cta{
-    padding:0 14px;
-    gap:8px;
-  }
+  .landing-page .topbar__inner{height:136px}
+  .landing-page .brand{gap:12px}
+  .landing-page .brand__mark{height:128px !important}
+  .landing-page .brand__name{display:none}
+  .landing-page .call-cta{ padding:0 14px; gap:8px; }
 }
+
+/* Dashboard topbar: keep it compact */
+.dashboard-page .topbar__inner{ height:72px; }
 
 @media (max-width: 390px){
   /* Keep brand readable; let it wrap while preserving tap target */
@@ -1906,14 +1910,13 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   position:sticky;
   top:0;
 }
-/* Dashboard table column sizing (8 columns) — pixel tuned for “no horizontal scroll” */
-.table thead th:nth-child(1) { width: 110px; } /* Time */
-.table thead th:nth-child(3) { width: 96px; }  /* Status */
-.table thead th:nth-child(4) { width: 84px; }  /* Call length */
-.table thead th:nth-child(5) { width: 108px; } /* Type */
-.table thead th:nth-child(6) { width: 110px; } /* Response time */
-.table thead th:nth-child(7) { width: 210px; } /* Result */
-.table thead th:nth-child(8) { width: 64px; }  /* Actions */
+/* Dashboard table column sizing (7 columns) */
+.dashboard-page .table thead th:nth-child(1) { width: 110px; } /* Time */
+.dashboard-page .table thead th:nth-child(3) { width: 110px; } /* Status */
+.dashboard-page .table thead th:nth-child(4) { width: 90px; }  /* Call length */
+.dashboard-page .table thead th:nth-child(5) { width: 120px; } /* Type */
+.dashboard-page .table thead th:nth-child(6) { width: 240px; } /* Result */
+.dashboard-page .table thead th:nth-child(7) { width: 64px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
   border-bottom:1px solid rgba(226,232,240,.7);
@@ -1987,11 +1990,11 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
     display:none;
   }
   /* Keep layout stable on smaller widths */
-  .table thead th:nth-child(1) { width: 96px; }  /* Time */
-  .table thead th:nth-child(3) { width: 92px; }  /* Status */
-  .table thead th:nth-child(5) { width: 96px; }  /* Type */
-  .table thead th:nth-child(7) { width: 190px; } /* Result */
-  .table thead th:nth-child(8) { width: 56px; }  /* Actions */
+  .dashboard-page .table thead th:nth-child(1) { width: 96px; }  /* Time */
+  .dashboard-page .table thead th:nth-child(3) { width: 104px; } /* Status */
+  .dashboard-page .table thead th:nth-child(5) { width: 110px; } /* Type */
+  .dashboard-page .table thead th:nth-child(6) { width: 220px; } /* Result */
+  .dashboard-page .table thead th:nth-child(7) { width: 56px; }  /* Actions */
 }
 .table code{
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -2105,6 +2108,16 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   outline:none;
   border-color:rgba(11,95,255,.30);
   box-shadow:0 0 0 3px rgba(11,95,255,.14);
+}
+
+/* Caller number should read like a primary identifier (not a generic link) */
+.dashboard-page .caller-link{
+  color:inherit;
+  text-decoration:none;
+}
+.dashboard-page .caller-link:hover{
+  text-decoration:underline;
+  text-underline-offset:2px;
 }
 
 /* Dashboard topbar polish */
