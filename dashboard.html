@@ -32,8 +32,8 @@
             <div class="brand__tag">Dashboard (last 50)</div>
           </div>
         </div>
-        <div class="topbar__right" style="display:flex; gap:10px; flex-wrap:wrap;">
-          <div class="muted" style="align-self:center; font-size:12px; font-weight:800;">
+        <div class="topbar__right dashboard-topbar__right">
+          <div class="muted dashboard-topbar__meta">
             Last fetch: <span id="lastFetchAt">—</span>
             <span class="muted">•</span>
             Updated <span id="lastUpdatedAgo">—</span> ago
@@ -88,7 +88,7 @@
           </div>
         </div>
 
-        <p class="micro-note muted" style="margin-top:-4px; margin-bottom:14px;">
+        <p class="micro-note muted">
           Tip: “Inbound call” = phone call. “Form submit” = web request. Setting a Result marks the lead handled.
         </p>
 
@@ -119,17 +119,17 @@
         <div class="dashboard-cards" id="cards" aria-label="Call events (mobile)" hidden></div>
         </div>
 
-        <p class="micro-note muted" style="margin-top: 10px;">
+        <p class="micro-note muted micro-note--after">
           Auto-refreshes every ~10 seconds when this tab is visible.
         </p>
 
-        <div class="section__head" style="margin-top:18px;">
-          <h3 style="margin:0;">Automation log</h3>
-          <p class="muted" style="margin:6px 0 0;">
+        <div class="section__head section__head--sub">
+          <h3>Automation log</h3>
+          <p class="muted">
             Demo-safe mode: we <strong>log</strong> escalations instead of sending texts/emails.
           </p>
         </div>
-        <div class="table-wrap" style="padding:14px; margin-top:10px;">
+        <div class="table-wrap table-wrap--padded">
           <div id="automationEmpty" class="muted">Loading automation events…</div>
           <div id="automationList" class="automation-list" hidden></div>
         </div>

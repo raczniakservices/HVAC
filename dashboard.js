@@ -608,29 +608,32 @@ function renderRows(events) {
                 ${outcomeDisplay}
               </div>
               <div style="flex:0 0 auto;">
-                <button class="btn-link js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
+                <button class="action-btn js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
               </div>
             </div>
             <div style="margin-top:8px; ${isEditingOutcome ? "" : "display:none;"}">
-              <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:12px;">
+              <select class="outcome-select js-outcome" aria-label="Set Outcome">
                 ${outcomeOptionsHtml}
               </select>
               <div style="margin-top:6px;">
-                <button class="btn-link js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
+                <button class="action-btn action-btn--quiet js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
               </div>
             </div>
           `
         : `
-            <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:12px;">
+            <select class="outcome-select js-outcome" aria-label="Set Outcome">
               ${outcomeOptionsHtml}
             </select>
           `;
 
-      // Row color class based on outcome
+      // Row intent class (used for subtle left bar only; no full-row backgrounds)
       let rowClass = "";
       if (currentOutcome === "booked") rowClass = "row-success";
       else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") rowClass = "row-danger";
       else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") rowClass = "row-warning";
+      else if (statusClass === "answered") rowClass = "row-info";
+      else if (statusClass === "missed") rowClass = "row-danger";
+      else rowClass = "row-neutral";
 
       const sla = formatSla(ev);
       const ownerLabel = formatOwner(ev);
@@ -653,7 +656,7 @@ function renderRows(events) {
           <td>
             <div class="owner-cell">
               <span class="owner-cell__name">${escapeHtml(ownerLabel)}</span>
-              <button class="btn-link js-assign" type="button" title="Assign owner">Assign</button>
+              <button class="action-btn action-btn--quiet js-assign" type="button" title="Assign owner">Assign</button>
             </div>
           </td>
           <td>${escapeHtml(responseText)}</td>
@@ -661,11 +664,11 @@ function renderRows(events) {
             ${outcomeControlsHtml}
           </td>
           <td style="text-align:right; overflow:visible;">
-            <div style="display:inline-flex; gap:8px; justify-content:flex-end; align-items:center;">
-              <a class="btn btn--secondary btn--sm" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back" style="height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 12px; font-weight:900;">
-                Call back
+            <div class="row-actions">
+              <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">
+                Call
               </a>
-              <button class="btn btn--secondary btn--sm js-delete" type="button" title="Delete" aria-label="Delete" style="width:40px; height:40px; padding:0; display:inline-flex; align-items:center; justify-content:center; font-size:18px; opacity:0.6; flex-shrink:0;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'">🗑</button>
+              <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
           </td>
         </tr>
@@ -717,19 +720,19 @@ function renderRows(events) {
           ? `
               <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                 <div style="min-width:0;">${outcomeDisplay}</div>
-                <button class="btn-link js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
+                <button class="action-btn js-edit-outcome" type="button" aria-label="Edit outcome" title="Edit outcome">Edit</button>
               </div>
               <div style="margin-top:10px; ${isEditingOutcome ? "" : "display:none;"}">
-                <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:13px;">
+                <select class="outcome-select js-outcome" aria-label="Set Outcome">
                   ${outcomeOptionsHtml}
                 </select>
                 <div style="margin-top:8px;">
-                  <button class="btn-link js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
+                  <button class="action-btn action-btn--quiet js-cancel-outcome" type="button" aria-label="Cancel editing outcome" title="Cancel">Cancel</button>
                 </div>
               </div>
             `
           : `
-              <select class="outcome-select js-outcome" aria-label="Set Outcome" style="width:100%; font-size:13px;">
+              <select class="outcome-select js-outcome" aria-label="Set Outcome">
                 ${outcomeOptionsHtml}
               </select>
             `;
@@ -765,7 +768,7 @@ function renderRows(events) {
                 <div class="dashboard-kv__label">Owner</div>
                 <div class="dashboard-kv__value" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                   <span style="font-weight:900;">${escapeHtml(formatOwner(ev))}</span>
-                  <button class="btn-link js-assign" type="button" title="Assign owner">Assign</button>
+                  <button class="action-btn action-btn--quiet js-assign" type="button" title="Assign owner">Assign</button>
                 </div>
               </div>
             </div>
@@ -774,9 +777,7 @@ function renderRows(events) {
               <div style="flex:1; min-width:0;">
                 ${outcomeControlsHtml}
               </div>
-              <a class="btn btn--secondary btn--sm" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back" style="height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 12px; font-weight:900;">
-                Call back
-              </a>
+              <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">Call</a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
           </div>
