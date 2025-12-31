@@ -517,29 +517,21 @@ function renderRows(events) {
       
       const outcomeOptionsHtml = OUTCOME_OPTIONS.map((o) => {
         const selected = o.value === currentOutcome ? "selected" : "";
-        return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
+        return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.displayLabel)}</option>`;
       }).join("");
 
-      // Show Result as a visual badge when set, dropdown when empty
-      let resultDisplay;
-      if (currentOutcome && currentOutcome !== "") {
-        // Visual badge for set results
-        const opt = OUTCOME_OPTIONS.find(x => x.value === currentOutcome) || OUTCOME_OPTIONS[0];
-        let badgeClass = "result-badge";
-        if (currentOutcome === "booked") badgeClass += " result-badge--success";
-        else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") badgeClass += " result-badge--danger";
-        else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") badgeClass += " result-badge--warning";
-        else if (currentOutcome === "no_answer") badgeClass += " result-badge--muted";
-        
-        resultDisplay = `<span class="${badgeClass}">${escapeHtml(opt.displayLabel)}</span>`;
-      } else {
-        // Dropdown for empty results
-        resultDisplay = `
-          <select class="outcome-select js-outcome" aria-label="Set Result">
-            ${outcomeOptionsHtml}
-          </select>
-        `;
-      }
+      // Always show dropdown, but style the select based on current value
+      let selectClass = "outcome-select js-outcome";
+      if (currentOutcome === "booked") selectClass += " outcome-select--success";
+      else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") selectClass += " outcome-select--danger";
+      else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") selectClass += " outcome-select--warning";
+      else if (currentOutcome === "no_answer") selectClass += " outcome-select--muted";
+
+      const resultDisplay = `
+        <select class="${selectClass}" aria-label="Set Result">
+          ${outcomeOptionsHtml}
+        </select>
+      `;
 
       // No colored bars — keep the table clean and scannable for owners
       const rowClass = "";
@@ -749,66 +741,6 @@ async function main() {
   const eventsRoot = $("#eventsRoot") || $("#rows");
 
   eventsRoot?.addEventListener("click", async (e) => {
-    // Allow clicking result badges to change them
-    const resultBadge = e.target.closest(".result-badge");
-    if (resultBadge) {
-      const rowEl = resultBadge.closest("[data-id]");
-      const id = rowEl?.dataset?.id;
-      if (!id) return;
-      
-      const current = getEventById(id);
-      const currentOutcome = current?.outcome || "";
-      
-      // Show all options in a simple prompt
-      const opts = OUTCOME_OPTIONS.filter(o => o.value !== ""); // skip "Set result..."
-      const menu = opts.map((o, i) => `${i+1}. ${o.label}`).join("\n");
-      const choice = prompt(`Change result:\n\n${menu}\n\nEnter number (or cancel):`, "");
-      if (!choice) return;
-      
-      const idx = parseInt(choice, 10) - 1;
-      if (idx < 0 || idx >= opts.length) {
-        showToast("Invalid choice", "bad");
-        return;
-      }
-      
-      const newOutcome = opts[idx].value;
-      
-      pauseAutoRefresh(3000);
-      mutationEpoch += 1;
-      mutatingIds.add(String(id));
-      try {
-        upsertEvent({
-          id,
-          outcome: newOutcome,
-          outcomeAt: new Date().toISOString(),
-        });
-        setSummary(applyDemoFilter(eventsCache));
-        
-        const updated = await setOutcome(id, newOutcome);
-        upsertEvent(updated);
-        
-        const afterOutcome = getEventById(id);
-        if (newOutcome && afterOutcome && !afterOutcome.followedUp) {
-          const fu = await followUp(id);
-          upsertEvent(fu);
-        }
-        
-        mutatingIds.delete(String(id));
-        {
-          const filtered = applyDemoFilter(eventsCache);
-          renderRows(filtered);
-          setSummary(filtered);
-        }
-        showToast("Result updated", "ok");
-      } catch (err) {
-        mutatingIds.delete(String(id));
-        console.error("Result update failed", err);
-        showToast(err.message || "Failed to update", "bad");
-        await loadCalls({ silent: true, force: true });
-      }
-      return;
-    }
-
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
       const rowEl = editOutcomeBtn.closest("[data-id]");

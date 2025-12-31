@@ -1915,8 +1915,8 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .dashboard-page .table thead th:nth-child(3) { width: 110px; } /* Status */
 .dashboard-page .table thead th:nth-child(4) { width: 90px; }  /* Call length */
 .dashboard-page .table thead th:nth-child(5) { width: 120px; } /* Type */
-.dashboard-page .table thead th:nth-child(6) { width: 240px; } /* Result */
-.dashboard-page .table thead th:nth-child(7) { width: 64px; }  /* Actions */
+.dashboard-page .table thead th:nth-child(6) { width: 220px; } /* Result */
+.dashboard-page .table thead th:nth-child(7) { width: 68px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
   border-bottom:1px solid rgba(226,232,240,.7);
@@ -2097,11 +2097,34 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   background-position:right 12px center;
   background-size:12px;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.8);
+  transition: all 0.15s;
 }
 .dashboard-page .outcome-select:focus{
   outline:none;
   border-color:rgba(11,95,255,.30);
   box-shadow:0 0 0 3px rgba(11,95,255,.14);
+}
+
+/* Color-coded dropdown based on selected value */
+.dashboard-page .outcome-select--success {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+.dashboard-page .outcome-select--danger {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+.dashboard-page .outcome-select--warning {
+  background: #fefce8;
+  border-color: #fde047;
+  color: #854d0e;
+}
+.dashboard-page .outcome-select--muted {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: #6b7280;
 }
 
 /* Caller number should read like a primary identifier (not a generic link) */
