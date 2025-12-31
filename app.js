@@ -109,6 +109,41 @@ function applyConfigToDom() {
     el.setAttribute("aria-label", `Call ${SITE_CONFIG.phoneDisplay || ""}`.trim());
   });
 
+  // Rating proof (optional)
+  try {
+    const ratingBlock = document.getElementById("ratingBlock");
+    const ratingLink = document.getElementById("ratingLink");
+    const ratingValueEl = document.getElementById("ratingValue");
+    const reviewCountEl = document.getElementById("reviewCount");
+    const reviewSourceEl = document.getElementById("reviewSourceLabel");
+
+    const ratingValue = Number(SITE_CONFIG.ratingValue);
+    const reviewCount = Number(SITE_CONFIG.reviewCount);
+    const sourceLabel = String(SITE_CONFIG.reviewSourceLabel || "").trim();
+    const reviewUrl = String(SITE_CONFIG.reviewUrl || "").trim();
+
+    const hasRating = Number.isFinite(ratingValue) && ratingValue > 0 && Number.isFinite(reviewCount) && reviewCount > 0;
+    if (ratingBlock) ratingBlock.hidden = !hasRating;
+    if (hasRating) {
+      if (ratingValueEl) setText(ratingValueEl, ratingValue.toFixed(1));
+      if (reviewCountEl) setText(reviewCountEl, String(Math.floor(reviewCount)));
+      if (reviewSourceEl) setText(reviewSourceEl, sourceLabel || "Reviews");
+      if (ratingLink) {
+        if (reviewUrl) {
+          ratingLink.setAttribute("href", reviewUrl);
+          ratingLink.hidden = false;
+        } else {
+          // If no URL, render as plain proof (no click)
+          ratingLink.setAttribute("href", "#");
+          ratingLink.removeAttribute("target");
+          ratingLink.removeAttribute("rel");
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   // Optional hero background image (off by default)
   try {
     const hero = document.querySelector(".hero");
@@ -129,7 +164,8 @@ function applyConfigToDom() {
   const trustStrip = document.getElementById("trustStrip");
   if (trustStrip) {
     trustStrip.innerHTML = "";
-    (SITE_CONFIG.trustStrip || []).slice(0, 4).forEach((t) => {
+    const maxItems = window.matchMedia && window.matchMedia("(max-width: 980px)").matches ? 2 : 4;
+    (SITE_CONFIG.trustStrip || []).slice(0, maxItems).forEach((t) => {
       const item = document.createElement("div");
       item.className = "trust-strip__item";
       item.innerHTML = `
@@ -157,35 +193,10 @@ function applyConfigToDom() {
       article.setAttribute("data-aos-delay", String(80 + Math.min(idx * 40, 240)));
       article.innerHTML = `
         <div class="service-line">
-          <span class="service-icon" aria-hidden="true"></span>
-          <div class="service-name"></div>
+          <h3 class="service-name"></h3>
         </div>
         <p class="card__body"></p>
       `;
-      const iconWrap = article.querySelector(".service-icon");
-      if (iconWrap) {
-        iconWrap.innerHTML = "";
-        const iconUrl = String(svc.iconUrl || "").trim();
-        if (iconUrl) {
-          const img = document.createElement("img");
-          img.src = iconUrl;
-          img.alt = String(svc.iconAlt || "").trim();
-          img.loading = "lazy";
-          img.decoding = "async";
-          img.addEventListener("error", () => {
-            // Fallback gracefully if the asset isn't present
-            try {
-              iconWrap.innerHTML = "";
-              setText(iconWrap, svc.icon || "•");
-            } catch {
-              // ignore
-            }
-          });
-          iconWrap.appendChild(img);
-        } else {
-          setText(iconWrap, svc.icon || "•");
-        }
-      }
       setText(article.querySelector(".service-name"), svc.title || "");
       setText(article.querySelector(".card__body"), svc.desc || "");
       servicesGrid.appendChild(article);
@@ -215,10 +226,13 @@ function applyConfigToDom() {
           <div class="verified">Verified homeowner</div>
         </div>
         <p class="testimonial__text"></p>
-        <div class="testimonial__author"></div>
+        <div class="testimonial__author">
+          <span class="testimonial__name"></span><span class="testimonial__city"></span>
+        </div>
       `;
       setText(slide.querySelector(".testimonial__text"), `"${t.text || ""}"`);
-      setText(slide.querySelector(".testimonial__author"), `— ${t.name || ""}, ${t.city || ""}`.trim());
+      setText(slide.querySelector(".testimonial__name"), t.name || "");
+      setText(slide.querySelector(".testimonial__city"), t.city || "");
       track.appendChild(slide);
     });
   }
@@ -460,6 +474,17 @@ function applyConfigToDom() {
       url: window.location.origin,
     };
 
+    // Optional aggregate rating (keep truthful)
+    const ratingValue = Number(SITE_CONFIG.ratingValue);
+    const reviewCount = Number(SITE_CONFIG.reviewCount);
+    if (Number.isFinite(ratingValue) && ratingValue > 0 && Number.isFinite(reviewCount) && reviewCount > 0) {
+      schema.aggregateRating = {
+        "@type": "AggregateRating",
+        ratingValue: ratingValue,
+        reviewCount: Math.floor(reviewCount),
+      };
+    }
+
     const s = document.createElement("script");
     s.type = "application/ld+json";
     s.id = "localBusinessSchema";
@@ -614,6 +639,34 @@ function setupInlineValidation(form) {
   });
 }
 
+function formatUsPhoneForDisplay(raw) {
+  const s = String(raw || "");
+  // If user is entering E.164 (+1...), don't fight it.
+  if (s.trim().startsWith("+")) return s;
+  const digits = s.replace(/[^\d]/g, "").slice(0, 10);
+  const len = digits.length;
+  if (len === 0) return "";
+  if (len < 4) return `(${digits}`;
+  if (len < 7) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function setupPhoneFormatting(form) {
+  const phone = getField(form, "phone");
+  if (!phone) return;
+  phone.addEventListener("input", () => {
+    try {
+      const el = phone;
+      const before = String(el.value || "");
+      const formatted = formatUsPhoneForDisplay(before);
+      // Avoid jumpiness: only apply formatting if it increases clarity.
+      if (formatted && formatted !== before) el.value = formatted;
+    } catch {
+      // ignore
+    }
+  });
+}
+
 async function postToFormspree(payload) {
   // Formspree accepts JSON. We keep it simple.
   const res = await fetch(FORM_ENDPOINT, {
@@ -668,6 +721,7 @@ function main() {
   forms.forEach((form) => {
     form.dataset.submitted = "0";
     setupInlineValidation(form);
+    setupPhoneFormatting(form);
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();

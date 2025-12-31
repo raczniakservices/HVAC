@@ -39,25 +39,26 @@
     <!-- LocalBusiness schema is injected from site.config.js -->
   </head>
 
-  <body>
+  <body class="landing-page">
     <a class="skip-link" href="#request">Skip to request form</a>
 
     <header class="topbar" role="banner">
       <div class="container topbar__inner">
         <a class="brand" href="#request" data-scroll="request" aria-label="Request service">
-          <img class="brand__mark" data-bind-src="logoUrl" alt="Blue Ridge Heating &amp; Air" />
+          <span class="brand__logo" aria-hidden="true">
+            <img class="brand__mark" data-bind-src="logoUrl" alt="Blue Ridge Heating &amp; Air" loading="eager" decoding="async" />
+          </span>
+          <span class="brand__text">
+            <span class="brand__name" data-bind="companyName">HVAC Service</span>
+            <span class="brand__tag" data-bind="tagline" data-hide-empty="1"></span>
+          </span>
         </a>
 
         <div class="topbar__right">
           <a class="phone-link" data-bind-tel="phoneTel" href="tel:+10000000000" aria-label="Call">
             <span class="phone-link__icon" aria-hidden="true">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M7 2h3l2 6-2 2c1.7 3.1 4.3 5.6 7.5 7.3l2-2 6 2v3c0 1-1 2-2.2 2C10.6 22.6 1.4 13.4 2 4.2 2.1 3 3 2 4 2h3z"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linejoin="round"
-                />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.9 19.9 0 0 1 3 5.2 2 2 0 0 1 5.1 3h3a2 2 0 0 1 2 1.7c.1.9.3 1.7.5 2.5a2 2 0 0 1-.5 2.1L9.1 10.9a16 16 0 0 0 4 4l1.6-1.1a2 2 0 0 1 2.1-.5c.8.2 1.6.4 2.5.5a2 2 0 0 1 1.7 2.1z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </span>
             <span class="phone-link__text" data-bind="phoneDisplay">(000) 000-0000</span>
@@ -81,7 +82,21 @@
               </span>
             </div>
 
-            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service Today? Request Service in Under 60 Seconds.</h1>
+            <h1 class="hero__h1" data-aos="fade-up" data-aos-delay="400">Need HVAC Service Today? <span class="text-primary">Request Service</span> in Under 60 Seconds.</h1>
+
+            <!-- Proof above the fold (populated from site.config.js; hidden if not configured) -->
+            <div class="rating" id="ratingBlock" data-aos="fade-up" data-aos-delay="460" hidden>
+              <a class="rating__inner" id="ratingLink" href="#" rel="noopener" target="_blank">
+                <span class="rating__stars" aria-hidden="true">★★★★★</span>
+                <span class="rating__text">
+                  <span class="rating__value" id="ratingValue">4.9</span>
+                  <span class="rating__sep">·</span>
+                  <span class="rating__count" id="reviewCount">287</span> reviews
+                  <span class="rating__sep">·</span>
+                  <span class="rating__source" id="reviewSourceLabel">Google</span>
+                </span>
+              </a>
+            </div>
             <p class="hero__subhead" data-aos="fade-up" data-aos-delay="500">
               Local, licensed HVAC service for urgent repairs, maintenance, and emergency calls. Call now or request a callback. We confirm availability quickly.
             </p>
@@ -135,6 +150,12 @@
                     <p class="error" data-error-for="phone" aria-live="polite"></p>
                   </div>
 
+                  <!-- Honeypot field (spam trap). Humans never see this; bots often fill it. -->
+                  <div class="field field--hp" aria-hidden="true">
+                    <label for="website">Website</label>
+                    <input id="website" name="website" tabindex="-1" autocomplete="off" />
+                  </div>
+
                   <div class="field">
                     <label for="cityOrZip">City or ZIP</label>
                     <input id="cityOrZip" name="cityOrZip" autocomplete="postal-code" required />
@@ -146,13 +167,14 @@
                     <select id="issue" name="issue" required>
                       <option value="">Select one…</option>
                       <option>No heat</option>
-                      <option>No AC</option>
+                      <option>No cooling (AC)</option>
                       <option>System won’t turn on</option>
-                      <option>Strange noise / burning smell</option>
-                      <option>Water leak</option>
-                      <option>Weak airflow / uneven temps</option>
-                      <option>Maintenance / tune-up</option>
-                      <option>Thermostat issue</option>
+                      <option>Strange noise or smell</option>
+                      <option>Water leaking</option>
+                      <option>Weak airflow or uneven temps</option>
+                      <option>Maintenance (tune-up)</option>
+                      <option>Thermostat problem</option>
+                      <option>Estimate / replacement</option>
                       <option>Other</option>
                     </select>
                     <p class="error" data-error-for="issue" aria-live="polite"></p>
@@ -194,7 +216,7 @@
         </div>
       </section>
 
-      <section class="section" id="services" aria-label="Services">
+      <section class="section section--services" id="services" aria-label="Services">
         <div class="container">
           <div class="section__head">
             <h2 data-aos="fade-up">Services</h2>
@@ -216,8 +238,8 @@
                 </p>
               </div>
               <div class="about__media" data-aos="fade-up" data-aos-delay="150">
-                <img class="about__img" data-bind-src="aboutImageUrl" data-hide-empty="1" alt="" />
-                <img class="about__seal" data-bind-src="satisfactionSealUrl" data-hide-empty="1" alt="Satisfaction guaranteed" />
+                <img class="about__img" data-bind-src="aboutImageUrl" data-hide-empty="1" alt="" loading="lazy" decoding="async" />
+                <img class="about__seal" data-bind-src="satisfactionSealUrl" data-hide-empty="1" alt="Satisfaction guaranteed" loading="lazy" decoding="async" />
               </div>
             </div>
           </div>
