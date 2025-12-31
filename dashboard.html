@@ -34,9 +34,7 @@
         </div>
         <div class="topbar__right dashboard-topbar__right">
           <div class="muted dashboard-topbar__meta">
-            Last fetch: <span id="lastFetchAt">—</span>
-            <span class="muted">•</span>
-            Updated <span id="lastUpdatedAgo">—</span> ago
+            Updated: <span id="updatedAgo">—</span>
           </div>
           <button class="btn btn--secondary" id="exportBtn" type="button" title="Export the currently visible rows to CSV">
             <span aria-hidden="true">⬇</span>
@@ -104,15 +102,13 @@
         <div class="dashboard-cards" id="cards" aria-label="Call events (mobile)" hidden></div>
         </div>
 
-        <p class="micro-note muted micro-note--after">
-          Auto-refreshes every ~10 seconds when this tab is visible.
-        </p>
+        <!-- Auto-refresh runs in the background; we don't show a footer note to keep this owner-friendly. -->
 
       </div>
     </main>
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-    <script src="./dashboard.js?v=15" defer></script>
+    <script src="./dashboard.js?v=16" defer></script>
   </body>
 </html>
 

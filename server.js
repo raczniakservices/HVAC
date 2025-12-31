@@ -202,8 +202,21 @@ function isValidCallSid(s) {
   return /^CA[a-f0-9]{32}$/i.test(trimmed);
 }
 
+function isLocalhostHost(hostname) {
+  const h = String(hostname || "").toLowerCase().trim();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1";
+}
+
+function shouldBypassDemoKey(req) {
+  // Local/dev convenience: don't block the dashboard when DEMO_KEY isn't set.
+  // Keep production locked down (Render sets process.env.RENDER).
+  if (process.env.RENDER) return false;
+  const host = req?.hostname || req?.headers?.host || "";
+  return isLocalhostHost(host);
+}
+
 function isAuthed(req) {
-  if (!DEMO_KEY) return false;
+  if (!DEMO_KEY) return shouldBypassDemoKey(req);
   const q = req.query?.key ? String(req.query.key) : "";
   const h = req.headers["x-demo-key"] ? String(req.headers["x-demo-key"]) : "";
   const cookie = req.headers.cookie || "";
@@ -230,6 +243,9 @@ function requireSimulatorEnabled(req, res, next) {
 
 function guardedPage(req, res, fileName) {
   if (!DEMO_KEY) {
+    if (shouldBypassDemoKey(req)) {
+      return res.sendFile(path.join(__dirname, fileName));
+    }
     return res
       .status(503)
       .type("html")
@@ -1490,7 +1506,7 @@ app.listen(PORT, () => {
   if (!DEMO_KEY) {
     // eslint-disable-next-line no-console
     console.log(
-      "⚠️  DEMO_KEY is not set. /demo and /dashboard will be disabled until you set it."
+      "ℹ️  DEMO_KEY is not set. Localhost access is allowed, but public access is disabled until you set DEMO_KEY."
     );
   }
   if (!TWILIO_AUTH_TOKEN && TWILIO_VALIDATE_SIGNATURE) {

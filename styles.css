@@ -1947,17 +1947,11 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .dashboard-page .table tbody tr:nth-child(even){ background:rgba(2,6,23,.015); }
 .dashboard-page .table tbody tr:hover{ background:rgba(2,6,23,.03); }
 
-/* No full-row semantic backgrounds. Use a subtle left intent bar on the first cell. */
+/* Clean table rows — no colored bars for owner-friendly scanning */
 .dashboard-page .table tbody td:first-child{
   position:relative;
   padding-left:12px;
-  box-shadow:inset 4px 0 0 rgba(148,163,184,.35);
 }
-.dashboard-page .table tbody tr.row-success td:first-child{ box-shadow:inset 4px 0 0 rgba(22,163,74,.55); }
-.dashboard-page .table tbody tr.row-warning td:first-child{ box-shadow:inset 4px 0 0 rgba(245,158,11,.55); }
-.dashboard-page .table tbody tr.row-danger td:first-child{ box-shadow:inset 4px 0 0 rgba(220,38,38,.55); }
-.dashboard-page .table tbody tr.row-info td:first-child{ box-shadow:inset 4px 0 0 rgba(14,165,233,.55); }
-.dashboard-page .table tbody tr.row-neutral td:first-child{ box-shadow:inset 4px 0 0 rgba(148,163,184,.35); }
 .outcome-display{
   display:inline-flex;
   align-items:center;
@@ -2158,6 +2152,64 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border-color:rgba(22,163,74,.25);
   background:rgba(22,163,74,.08);
   color:var(--ok);
+}
+
+/* Result badges (visual when set, replace dropdown) */
+.result-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 12px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:800;
+  white-space:nowrap;
+  border:1px solid var(--line);
+  background:var(--soft);
+  color:var(--muted);
+  cursor:pointer;
+  transition:transform .15s var(--ease), border-color .15s var(--ease), background-color .15s var(--ease);
+}
+.result-badge:hover{
+  transform:translateY(-1px);
+  border-color:rgba(15,23,42,.18);
+  background:rgba(255,255,255,.96);
+}
+.result-badge--success{
+  border-color:rgba(22,163,74,.28);
+  background:rgba(22,163,74,.12);
+  color:#15803d;
+}
+.result-badge--success:hover{
+  border-color:rgba(22,163,74,.38);
+  background:rgba(22,163,74,.16);
+}
+.result-badge--danger{
+  border-color:rgba(220,38,38,.28);
+  background:rgba(220,38,38,.12);
+  color:#b91c1c;
+}
+.result-badge--danger:hover{
+  border-color:rgba(220,38,38,.38);
+  background:rgba(220,38,38,.16);
+}
+.result-badge--warning{
+  border-color:rgba(245,158,11,.28);
+  background:rgba(245,158,11,.12);
+  color:#c2410c;
+}
+.result-badge--warning:hover{
+  border-color:rgba(245,158,11,.38);
+  background:rgba(245,158,11,.16);
+}
+.result-badge--muted{
+  border-color:rgba(148,163,184,.22);
+  background:rgba(148,163,184,.08);
+  color:#64748b;
+}
+.result-badge--muted:hover{
+  border-color:rgba(148,163,184,.32);
+  background:rgba(148,163,184,.12);
 }
 .source-pill{
   display:inline-flex;

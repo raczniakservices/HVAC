@@ -82,23 +82,6 @@ function formatDuration(seconds) {
   return `${m}m ${rem}s`;
 }
 
-function formatSla(ev) {
-  const dueAt = ev?.slaDueAt ? Date.parse(ev.slaDueAt) : null;
-  if (!Number.isFinite(dueAt)) return { label: "—", cls: "sla sla--none" };
-  if (ev?.outcome) return { label: "Handled", cls: "sla sla--ok" };
-
-  const ms = dueAt - Date.now();
-  const mins = Math.ceil(Math.abs(ms) / 60000);
-  if (ms <= 0) return { label: `Overdue ${mins}m`, cls: "sla sla--overdue" };
-  if (mins <= 2) return { label: `Due ${mins}m`, cls: "sla sla--due" };
-  return { label: `Due ${mins}m`, cls: "sla sla--ok" };
-}
-
-function formatOwner(ev) {
-  const s = String(ev?.assignedTo || "").trim();
-  return s || "Unassigned";
-}
-
 function formatLocalDateTime(iso) {
   if (!iso) return "";
   try {
@@ -227,26 +210,36 @@ function getDisplayStatus(ev) {
 }
 
 function setLastFetch(date) {
-  const el = $("#lastFetchAt");
-  if (!el) return;
   if (!date) {
-    el.textContent = "—";
     lastFetchAtMs = 0;
     return;
   }
   lastFetchAtMs = date.getTime();
-  el.textContent = date.toLocaleTimeString();
 }
 
 function setUpdatedAgoText() {
-  const el = $("#lastUpdatedAgo");
+  const el = $("#updatedAgo");
   if (!el) return;
   if (!lastFetchAtMs) {
     el.textContent = "—";
     return;
   }
   const s = Math.max(0, Math.floor((Date.now() - lastFetchAtMs) / 1000));
-  el.textContent = `${s}s`;
+  if (s < 5) {
+    el.textContent = "just now";
+    return;
+  }
+  if (s < 60) {
+    el.textContent = `${s}s ago`;
+    return;
+  }
+  const m = Math.floor(s / 60);
+  if (m < 60) {
+    el.textContent = `${m} min ago`;
+    return;
+  }
+  const h = Math.floor(m / 60);
+  el.textContent = `${h} hr ago`;
 }
 
 function startAgoTicker() {
@@ -294,7 +287,7 @@ function pauseAutoRefresh(ms) {
 
 async function fetchCalls() {
   const key = getKey();
-  const res = await fetch(withKey("/api/calls?limit=50"), {
+  const res = await fetch(withKey("/api/calls?limit=15"), {
     headers: { ...(key ? { "x-demo-key": key } : {}) },
   });
   const text = await res.text();
@@ -527,26 +520,29 @@ function renderRows(events) {
         return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
       }).join("");
 
-      // Outcome display with timestamp
-      let outcomeDisplay = `<span style="color:${outcomeOption.color}; font-weight:700; font-size:13px;">${escapeHtml(outcomeOption.displayLabel)}</span>`;
-      if (ev.outcomeAt && currentOutcome) {
-        outcomeDisplay += `<div class="muted" style="font-size:11px; margin-top:2px;">${escapeHtml(formatTimeShort(ev.outcomeAt))}</div>`;
+      // Show Result as a visual badge when set, dropdown when empty
+      let resultDisplay;
+      if (currentOutcome && currentOutcome !== "") {
+        // Visual badge for set results
+        const opt = OUTCOME_OPTIONS.find(x => x.value === currentOutcome) || OUTCOME_OPTIONS[0];
+        let badgeClass = "result-badge";
+        if (currentOutcome === "booked") badgeClass += " result-badge--success";
+        else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") badgeClass += " result-badge--danger";
+        else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") badgeClass += " result-badge--warning";
+        else if (currentOutcome === "no_answer") badgeClass += " result-badge--muted";
+        
+        resultDisplay = `<span class="${badgeClass}">${escapeHtml(opt.displayLabel)}</span>`;
+      } else {
+        // Dropdown for empty results
+        resultDisplay = `
+          <select class="outcome-select js-outcome" aria-label="Set Result">
+            ${outcomeOptionsHtml}
+          </select>
+        `;
       }
 
-      const outcomeControlsHtml = `
-        <select class="outcome-select js-outcome" aria-label="Set Result">
-          ${outcomeOptionsHtml}
-        </select>
-      `;
-
-      // Row intent class (used for subtle left bar only; no full-row backgrounds)
-      let rowClass = "";
-      if (currentOutcome === "booked") rowClass = "row-success";
-      else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") rowClass = "row-danger";
-      else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") rowClass = "row-warning";
-      else if (statusClass === "answered") rowClass = "row-info";
-      else if (statusClass === "missed") rowClass = "row-danger";
-      else rowClass = "row-neutral";
+      // No colored bars — keep the table clean and scannable for owners
+      const rowClass = "";
 
       return `
         <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
@@ -563,10 +559,16 @@ function renderRows(events) {
             </span>
           </td>
           <td style="overflow:visible;">
-            ${outcomeControlsHtml}
+            ${resultDisplay}
           </td>
           <td class="actions-td" style="overflow:visible;">
-            <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
+            <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 3h6l1 2h5v2H3V5h5l1-2z" fill="currentColor"/>
+                <path d="M6 9h12l-1 12H7L6 9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                <path d="M10 12v6M14 12v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
           </td>
         </tr>
       `;
@@ -747,49 +749,62 @@ async function main() {
   const eventsRoot = $("#eventsRoot") || $("#rows");
 
   eventsRoot?.addEventListener("click", async (e) => {
-    const assignBtn = e.target.closest(".js-assign");
-    if (assignBtn) {
-      const rowEl = assignBtn.closest("[data-id]");
+    // Allow clicking result badges to change them
+    const resultBadge = e.target.closest(".result-badge");
+    if (resultBadge) {
+      const rowEl = resultBadge.closest("[data-id]");
       const id = rowEl?.dataset?.id;
       if (!id) return;
-
+      
       const current = getEventById(id);
-      const existing = String(current?.assignedTo || "").trim();
-      const next = prompt("Assign this lead to (name):", existing);
-      if (next === null) return; // cancelled
-      const assignedTo = String(next || "").trim();
-
+      const currentOutcome = current?.outcome || "";
+      
+      // Show all options in a simple prompt
+      const opts = OUTCOME_OPTIONS.filter(o => o.value !== ""); // skip "Set result..."
+      const menu = opts.map((o, i) => `${i+1}. ${o.label}`).join("\n");
+      const choice = prompt(`Change result:\n\n${menu}\n\nEnter number (or cancel):`, "");
+      if (!choice) return;
+      
+      const idx = parseInt(choice, 10) - 1;
+      if (idx < 0 || idx >= opts.length) {
+        showToast("Invalid choice", "bad");
+        return;
+      }
+      
+      const newOutcome = opts[idx].value;
+      
       pauseAutoRefresh(3000);
       mutationEpoch += 1;
       mutatingIds.add(String(id));
-      assignBtn.disabled = true;
       try {
-        // Optimistic update
-        upsertEvent({ id, assignedTo: assignedTo || null });
-        renderRows(applyDemoFilter(eventsCache));
-
-        const updated = await fetch(withKey(`/api/calls/${encodeURIComponent(id)}/assign`), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignedTo: assignedTo || null }),
-        }).then(async (r) => {
-          const t = await r.text();
-          let j;
-          try { j = t ? JSON.parse(t) : null; } catch { j = { message: t }; }
-          if (!r.ok) throw new Error(j?.message || j?.error || `Assign failed (${r.status})`);
-          return j;
+        upsertEvent({
+          id,
+          outcome: newOutcome,
+          outcomeAt: new Date().toISOString(),
         });
-
+        setSummary(applyDemoFilter(eventsCache));
+        
+        const updated = await setOutcome(id, newOutcome);
         upsertEvent(updated);
+        
+        const afterOutcome = getEventById(id);
+        if (newOutcome && afterOutcome && !afterOutcome.followedUp) {
+          const fu = await followUp(id);
+          upsertEvent(fu);
+        }
+        
         mutatingIds.delete(String(id));
-        renderRows(applyDemoFilter(eventsCache));
-        showToast("Assigned", "ok");
+        {
+          const filtered = applyDemoFilter(eventsCache);
+          renderRows(filtered);
+          setSummary(filtered);
+        }
+        showToast("Result updated", "ok");
       } catch (err) {
         mutatingIds.delete(String(id));
-        showToast(err.message || "Assign failed", "bad");
+        console.error("Result update failed", err);
+        showToast(err.message || "Failed to update", "bad");
         await loadCalls({ silent: true, force: true });
-      } finally {
-        assignBtn.disabled = false;
       }
       return;
     }
