@@ -191,6 +191,15 @@ function computeResponseSeconds(ev) {
   return Math.max(0, Math.floor((followed - created) / 1000));
 }
 
+function computeRespondedSeconds(ev) {
+  const rs = computeResponseSeconds(ev);
+  if (typeof rs === "number" && Number.isFinite(rs)) return rs;
+  const created = parseIsoMs(ev?.createdAt);
+  const outcomeAt = parseIsoMs(ev?.outcomeAt);
+  if (!Number.isFinite(created) || !Number.isFinite(outcomeAt)) return null;
+  return Math.max(0, Math.floor((outcomeAt - created) / 1000));
+}
+
 function getCallLengthSeconds(ev) {
   if (typeof ev?.dialCallDurationSec === "number") return ev.dialCallDurationSec;
   if (typeof ev?.callDurationSec === "number") return ev.callDurationSec;
@@ -533,6 +542,12 @@ function renderRows(events) {
         </select>
       `;
 
+      const respondedSeconds = computeRespondedSeconds(ev);
+      const respondedHtml =
+        typeof respondedSeconds === "number"
+          ? `<div class="result-meta muted">Responded in ${escapeHtml(formatDuration(respondedSeconds))}</div>`
+          : "";
+
       // No colored bars — keep the table clean and scannable for owners
       const rowClass = "";
 
@@ -552,6 +567,7 @@ function renderRows(events) {
           </td>
           <td style="overflow:visible;">
             ${resultDisplay}
+            ${respondedHtml}
           </td>
           <td class="actions-td" style="overflow:visible;">
             <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">

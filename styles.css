@@ -1942,6 +1942,18 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   padding-left:8px;
   padding-right:8px;
 }
+
+/* Tighten spacing between Result and Actions */
+.dashboard-page .table tbody td:nth-child(6){ padding-right:4px; }
+.dashboard-page .table tbody td:nth-child(7){ padding-left:4px; }
+
+/* Result meta line under dropdown (e.g., "Responded in 12m") */
+.dashboard-page .result-meta{
+  margin-top:4px;
+  font-size:11px;
+  line-height:1.1;
+  white-space:nowrap;
+}
 .table tbody tr:last-child td{border-bottom:none}
 .dashboard-page .table tbody tr{ background:transparent; }
 .dashboard-page .table tbody tr:nth-child(even){ background:rgba(2,6,23,.015); }
