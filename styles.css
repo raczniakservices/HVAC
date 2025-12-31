@@ -238,6 +238,7 @@ button:active,a.btn:active{transform:translateY(0)}
   display:flex;
   align-items:center;
   gap:12px;
+  flex:1 1 auto;
   min-width:0;
   text-decoration:none;
 }
@@ -1455,12 +1456,15 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 
 @media (max-width: 720px){
   .topbar__inner{height:64px}
-  .brand__mark{height:36px}
+  /* Keep the logo readable on mobile */
+  .brand__logo{padding:5px 9px}
+  .brand__mark{height:40px}
 }
 
 @media (max-width: 520px){
   .brand__tag{display:none}
   .phone-link{padding:0 14px; font-size:14px}
+  .brand__name{font-size:15px}
 }
 
 /* Respect reduced motion preferences (also plays nice with AOS) */
