@@ -588,89 +588,7 @@ function buildTimelineItem({ title, time, body, className }) {
 }
 
 // Follow-up modal intentionally removed.
-
-async function openTimelineModal(eventId) {
-  timelineEventId = Number(eventId);
-  const ev = getEventById(eventId);
-  const title = document.getElementById("timelineTitle");
-  if (title) {
-    title.textContent = ev?.callerNumber ? `Timeline — ${ev.callerNumber}` : "Lead timeline";
-  }
-
-  showOverlay("timelineOverlay");
-
-  // Evidence pane (robust against cached/stale HTML or DOM drift)
-  let itemsEl = document.getElementById("timelineItems");
-  if (!itemsEl) {
-    const col = document.querySelector("#timelineOverlay .timeline-col .section-label")?.parentElement || null;
-    if (col) {
-      const div = document.createElement("div");
-      div.id = "timelineItems";
-      div.className = "timeline";
-      col.appendChild(div);
-      itemsEl = div;
-    }
-  }
-  if (itemsEl) itemsEl.innerHTML = `<div class="muted">Loading…</div>`;
-
-  try {
-    const emailLogs = await apiGetEmailLogs(eventId);
-
-    const parts = [];
-    parts.push(
-      buildTimelineItem({
-        title: "Lead created",
-        time: formatTimeFull(ev?.createdAt),
-        body: `${formatSource(ev?.source).label}${ev?.note ? ` — ${String(ev.note)}` : ""}`,
-      })
-    );
-
-    if (ev?.source === "twilio") {
-      const dur = getCallLengthSeconds(ev);
-      parts.push(
-        buildTimelineItem({
-          title: ev?.status === "answered" ? "Answered call" : "Missed call",
-          time: formatTimeFull(ev?.createdAt),
-          body: dur != null ? `Call duration: ${formatDuration(dur)}` : "",
-        })
-      );
-    }
-
-    if (ev?.outcome) {
-      parts.push(
-        buildTimelineItem({
-          title: `Outcome set: ${ev.outcome}`,
-          time: ev?.outcomeAt ? formatTimeFull(ev.outcomeAt) : "",
-          body: "",
-        })
-      );
-    }
-
-    for (const m of Array.isArray(emailLogs) ? emailLogs : []) {
-      const receipt = m.provider_message_id ? String(m.provider_message_id).slice(0, 10) : "";
-      const isFailed = String(m.status || "").toLowerCase() === "failed";
-      parts.push(
-        buildTimelineItem({
-          title: isFailed ? `EMAIL FAILED: ${m.email_type}` : `Email: ${m.email_type} (sent)`,
-          time: fmtEpoch(m.created_at),
-          body: `${m.to_email}${receipt ? ` — receipt ${receipt}…` : ""}${
-            isFailed && m.error_text ? ` — ${m.error_text}` : ""
-          }`,
-          className: isFailed ? "timeline-item--danger" : "timeline-item--ok",
-        })
-      );
-    }
-
-    if (itemsEl) itemsEl.innerHTML = parts.join("") || `<div class="muted">No timeline entries yet.</div>`;
-  } catch (e) {
-    if (itemsEl) itemsEl.innerHTML = `<div class="muted">Failed to load timeline: ${escapeHtml(e?.message || "Unknown error")}</div>`;
-  }
-}
-
-function closeTimelineModal() {
-  timelineEventId = null;
-  hideOverlay("timelineOverlay");
-}
+// Timeline modal intentionally removed.
 
 function renderRows(events) {
   const tbody = $("#rows");
@@ -766,7 +684,6 @@ function renderRows(events) {
             ${respondedHtml}
           </td>
           <td class="actions-td" style="overflow:visible;">
-            <button class="icon-btn js-timeline" type="button" title="Timeline" aria-label="Timeline">⎯⎯</button>
             <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M9 3h6l1 2h5v2H3V5h5l1-2z" fill="currentColor"/>
@@ -860,7 +777,6 @@ function renderRows(events) {
               <div style="flex:1; min-width:0;">
                 ${outcomeControlsHtml}
               </div>
-              <button class="action-btn js-timeline" type="button" title="Timeline" aria-label="Timeline">Timeline</button>
               <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">Call</a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
@@ -961,16 +877,10 @@ async function main() {
     }
   });
 
-  // Modals (follow-up removed)
-  document.getElementById("timelineCloseBtn")?.addEventListener("click", closeTimelineModal);
-  document.getElementById("timelineOverlay")?.addEventListener("click", (e) => {
-    if (e.target && e.target.id === "timelineOverlay") closeTimelineModal();
-  });
-  // Booking confirmation email intentionally removed.
+  // Modals: follow-up + timeline intentionally removed.
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!document.getElementById("timelineOverlay")?.hidden) closeTimelineModal();
   });
 
   const eventsRoot = $("#eventsRoot") || $("#rows");
@@ -997,14 +907,7 @@ async function main() {
       return;
     }
 
-    const timelineBtn = e.target.closest(".js-timeline");
-    if (timelineBtn) {
-      const rowEl = timelineBtn.closest("[data-id]");
-      const id = rowEl?.dataset?.id;
-      if (!id) return;
-      openTimelineModal(id);
-      return;
-    }
+    // Timeline UI intentionally removed.
 
     // Follow-up UI intentionally removed.
 
