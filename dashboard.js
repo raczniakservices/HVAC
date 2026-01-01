@@ -149,12 +149,12 @@ function formatCallerForExcel(raw) {
 
 const OUTCOME_OPTIONS = [
   { value: "", label: "Set result…", displayLabel: "Set result…", color: "#94a3b8" },
-  { value: "booked", label: "Booked", displayLabel: "✅ Booked", color: "#16a34a" },
-  { value: "reached_no_booking", label: "Contacted (no booking)", displayLabel: "📞 Contacted", color: "#f59e0b" },
-  { value: "no_answer", label: "No answer", displayLabel: "❌ No answer", color: "#94a3b8" },
-  { value: "already_hired", label: "Already hired", displayLabel: "🚫 Already hired", color: "#dc2626" },
-  { value: "wrong_number", label: "Wrong number/spam", displayLabel: "⚠️ Wrong number", color: "#dc2626" },
-  { value: "call_back_later", label: "Call back later", displayLabel: "⏰ Call back", color: "#f59e0b" },
+  { value: "booked", label: "Booked", displayLabel: "Booked", color: "#16a34a" },
+  { value: "reached_no_booking", label: "Contacted (no booking)", displayLabel: "Contacted (no booking)", color: "#f59e0b" },
+  { value: "no_answer", label: "No answer", displayLabel: "No answer", color: "#94a3b8" },
+  { value: "already_hired", label: "Already hired", displayLabel: "Already hired", color: "#dc2626" },
+  { value: "wrong_number", label: "Wrong number/spam", displayLabel: "Wrong number/spam", color: "#dc2626" },
+  { value: "call_back_later", label: "Call back later", displayLabel: "Call back later", color: "#f59e0b" },
 ];
 
 const NEXT_STEP_OPTIONS = [
@@ -197,9 +197,22 @@ function nextStepLabel(value) {
 function formatOutcomeResponse(ev) {
   const ms = computeOutcomeResponseMs(ev);
   if (!Number.isFinite(ms)) return null;
-  if (ms < 60_000) return "<1m";
-  const mins = Math.floor(ms / 60_000);
-  return `${mins}m`;
+  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+  if (totalMinutes < 1) return "<1m";
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  const remMinutes = totalMinutes % 60;
+
+  // <48h => "3h 12m"
+  if (totalHours < 48) {
+    return remMinutes > 0 ? `${totalHours}h ${remMinutes}m` : `${totalHours}h`;
+  }
+
+  // >=48h => "2d 1h"
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 }
 
 // Follow-up UI intentionally removed.
@@ -253,10 +266,11 @@ function getOutcomeOption(outcomeValue) {
 }
 
 function getDisplayStatus(ev) {
-  const isFormLead = ev?.source === "landing_form";
-  const statusClass = isFormLead ? (ev?.followedUp ? "answered" : "missed") : ev?.status;
-  const statusLabel = isFormLead ? (ev?.followedUp ? "followed up" : "new lead") : ev?.status;
-  return { statusClass, statusLabel };
+  const state = getLeadState(ev);
+  return {
+    statusClass: state?.state || "",
+    statusLabel: state?.label || "",
+  };
 }
 
 function setLastFetch(date) {
@@ -566,9 +580,6 @@ function setSummary(events) {
 
 function formatAutomationKind(kind) {
   const k = String(kind || "").trim();
-  if (k === "sla_breached") {
-    return { title: "SLA breached", pill: "Overdue", pillClass: "automation-item__pill--warn" };
-  }
   if (k === "escalated") {
     return { title: "Escalated", pill: "Escalated", pillClass: "automation-item__pill--danger" };
   }
@@ -591,38 +602,28 @@ function getCreatedAtMs(ev) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-function getSlaMinutes(ev) {
-  const n = Number(ev?.slaMinutes);
-  if (Number.isFinite(n) && n > 0) return Math.floor(n);
-  return 15;
-}
-
 function getLeadState(ev) {
+  // 3-state owner-friendly truth ledger:
+  // - Unhandled (RED): outcome is null AND first_action_at is null
+  // - In progress (YELLOW): outcome is null AND first_action_at exists
+  // - Closed (GREEN): outcome exists
   const hasOutcome = !!(ev?.outcome && String(ev.outcome).trim());
-  if (hasOutcome) return { state: "closed", label: "Closed", cls: "pill pill--ok" };
+  if (hasOutcome) return { state: "closed", label: "Closed", cls: "pill pill--ok", overdue: false };
 
   const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
-  const isOverdue = !hasFirstAction && !!ev?.overdue;
-
-  if (isOverdue) {
-    const mins = Number.isFinite(Number(ev?.overdue_minutes)) ? Math.max(0, Math.floor(Number(ev.overdue_minutes))) : null;
-    const label = mins !== null ? `Overdue ${mins}m` : "Overdue";
-    return { state: "unhandled", label, cls: "pill pill--danger", overdue: true };
-  }
-
   if (hasFirstAction) return { state: "in_progress", label: "In progress", cls: "pill pill--warn", overdue: false };
-  return { state: "unhandled", label: "Unhandled", cls: "pill pill--muted", overdue: false };
+
+  const isOverdue = !!ev?.overdue;
+  return { state: "unhandled", label: "Unhandled", cls: "pill pill--danger", overdue: isOverdue };
 }
 
-function buildSlaCell(ev) {
-  const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
-  const isOverdue = !hasFirstAction && !!ev?.overdue;
-  if (!hasFirstAction) {
-    if (isOverdue) return `<span class="sla sla--overdue">SLA: Overdue</span>`;
-    return `<span class="sla sla--none">SLA: —</span>`;
-  }
-  // SLA is time-to-first-action. Once first action exists, we don't show "success green".
-  return `<span class="sla sla--met">SLA: Met</span>`;
+function buildStatusCell(ev) {
+  const state = getLeadState(ev);
+  const overdueBadge =
+    state.state === "unhandled" && state.overdue
+      ? `<span class="status-overdue-badge" aria-label="Overdue">Overdue</span>`
+      : "";
+  return `<span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}${overdueBadge}</span>`;
 }
 
 function buildOwnerCell(ev) {
@@ -699,7 +700,7 @@ function renderRows(events) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
-    tbody.innerHTML = `<tr><td colspan="10" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">${escapeHtml(msg)}</td></tr>`;
     if (cards) {
       cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
     }
@@ -719,10 +720,8 @@ function renderRows(events) {
 
       const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
       const isInboundCall = String(ev?.source || "") === "twilio";
-      const isMissedInbound =
-        isInboundCall &&
-        (String(ev?.status || "") === "missed" ||
-          String(typeLabel).toLowerCase().includes("(missed)"));
+      // Hard rule: MISSED only when inbound_call (twilio) AND call_status (status) === missed
+      const isMissedInbound = isInboundCall && String(ev?.status || "") === "missed";
 
       const callLenText = isMissedInbound
         ? "Missed"
@@ -758,8 +757,7 @@ function renderRows(events) {
         </select>
       `;
 
-      const state = getLeadState(ev);
-      const slaHtml = buildSlaCell(ev);
+      const statusHtml = buildStatusCell(ev);
       const ownerHtml = buildOwnerCell(ev);
       const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
       const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
@@ -772,10 +770,10 @@ function renderRows(events) {
           return `
             <span class="next-step-pill">${escapeHtml(nextStepLabel(nextStepValue))}</span>
             <a href="#" class="mini-link js-edit-next-step" aria-label="Edit next step">Edit</a>
-            <span class="saved-tick" aria-hidden="true" hidden>✓</span>
+            <span class="save-indicator" aria-live="polite" hidden></span>
           `;
         }
-        return `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select><span class="saved-tick" aria-hidden="true" hidden>✓</span>`;
+        return `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select><span class="save-indicator" aria-live="polite" hidden></span>`;
       })();
 
       const missedPill = isMissedInbound
@@ -800,8 +798,7 @@ function renderRows(events) {
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
             <div class="caller-cell__meta muted">${detailsToggle}</div>
           </td>
-          <td class="open-cell"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span></td>
-          <td class="sla-cell">${slaHtml}</td>
+          <td class="status-cell">${statusHtml}</td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <div class="type-cell">${typeHtml}</div>
@@ -830,7 +827,7 @@ function renderRows(events) {
       const detailsRow = hasDetails
         ? `
           <tr class="details-row ${isExpanded ? "" : "details-row--hidden"}" data-details-for="${escapeHtml(ev.id)}">
-            <td colspan="10">
+            <td colspan="9">
               <div class="details-panel">
                 <div class="details-panel__title">Details</div>
                 <div class="details-panel__body">${escapeHtml(detailsText)}</div>
@@ -859,16 +856,13 @@ function renderRows(events) {
               : null;
         const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
         const isInboundCall = String(ev?.source || "") === "twilio";
-        const isMissedInbound =
-          isInboundCall &&
-          (String(ev?.status || "") === "missed" ||
-            String(typeLabel).toLowerCase().includes("(missed)"));
+        const isMissedInbound = isInboundCall && String(ev?.status || "") === "missed";
         const callLenText = isMissedInbound ? "Missed" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
         const isFormLead = ev?.source === "landing_form";
         const detailsText = isFormLead && ev.note ? String(ev.note) : "";
-        const display = getDisplayStatus(ev);
-        const statusLabel = display?.statusLabel || "";
+        const state = getLeadState(ev);
+        const statusLabel = state?.label || "";
 
         const currentOutcome = ev.outcome ? String(ev.outcome) : "";
         const outcomeOption =
@@ -879,8 +873,7 @@ function renderRows(events) {
           return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
         }).join("");
 
-        const state = getLeadState(ev);
-        const slaHtml = buildSlaCell(ev);
+        const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
         const owner = ev?.owner ? String(ev.owner) : "";
         const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
 
@@ -899,7 +892,7 @@ function renderRows(events) {
         }).join("");
         const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
         return `
-          <div class="dashboard-card ${isMissedInbound ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
+          <div class="dashboard-card ${missedActionable ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
             <div class="dashboard-card__top">
               <div class="dashboard-card__meta">
                 <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
@@ -909,8 +902,7 @@ function renderRows(events) {
               </div>
               <div class="dashboard-card__badges">
                 <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
-                ${slaHtml}
-                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(typeLabel)}${missedPill}</span>
+                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}${missedPill}</span>
               </div>
             </div>
 
@@ -945,6 +937,20 @@ function renderRows(events) {
       })
       .join("");
   }
+}
+
+function showRowSaveIndicator(eventId, { ok, message, ms }) {
+  const tr = document.querySelector(`[data-id="${CSS.escape(String(eventId))}"]`);
+  const el = tr ? tr.querySelector(".save-indicator") : null;
+  if (!el) return;
+
+  el.textContent = String(message || (ok ? "Saved" : "Failed to save"));
+  el.dataset.state = ok ? "ok" : "bad";
+  el.hidden = false;
+  clearTimeout(showRowSaveIndicator._t);
+  showRowSaveIndicator._t = setTimeout(() => {
+    el.hidden = true;
+  }, Math.max(0, Number(ms || 650)));
 }
 
 function upsertEvent(ev) {
@@ -1195,21 +1201,14 @@ async function main() {
       const filtered = applyDemoFilter(eventsCache);
       renderRows(filtered);
       setSummary(filtered);
-      // Subtle "Saved" tick (no toast spam)
-      const tr = document.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
-      const tick = tr ? tr.querySelector(".saved-tick") : null;
-      if (tick) {
-        tick.hidden = false;
-        setTimeout(() => {
-          tick.hidden = true;
-        }, 700);
-      }
+      // Subtle inline "Saved" (500–700ms)
+      showRowSaveIndicator(id, { ok: true, message: "Saved", ms: 650 });
     } catch (err) {
       // Revert UI
       upsertEvent({ id, next_step: prev ? prev : null });
       editingNextStepIds.add(String(id));
       renderRows(applyDemoFilter(eventsCache));
-      showToast(err.message || "Failed to save next step", "bad");
+      showRowSaveIndicator(id, { ok: false, message: "Failed to save", ms: 1500 });
     }
   });
 

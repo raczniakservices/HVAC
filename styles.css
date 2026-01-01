@@ -263,18 +263,6 @@ button:active,a.btn:active{transform:translateY(0)}
 ====================================================== */
 .center-th{ text-align:center; }
 
-.sla-dot{
-  width:10px;
-  height:10px;
-  border-radius:999px;
-  display:inline-block;
-  background:#cbd5e1;
-  box-shadow:0 0 0 2px rgba(15,23,42,.04);
-}
-.sla-dot--green{ background:#16a34a; }
-.sla-dot--yellow{ background:#f59e0b; }
-.sla-dot--red{ background:#dc2626; }
-
 .pill{
   display:inline-flex;
   align-items:center;
@@ -658,35 +646,7 @@ button:active,a.btn:active{transform:translateY(0)}
   pointer-events:none !important;
 }
 
-/* Dashboard: SLA pills + owner cell */
-.sla{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:6px 10px;
-  border-radius:999px;
-  font-weight:900;
-  font-size:12px;
-  border:1px solid var(--line);
-  background:var(--soft);
-  white-space:nowrap;
-}
-.sla--none{opacity:.7}
-.sla--ok{
-  border-color:rgba(22,163,74,.18);
-  background:rgba(22,163,74,.08);
-  color:var(--ok);
-}
-.sla--due{
-  border-color:rgba(245,158,11,.25);
-  background:rgba(245,158,11,.10);
-  color:#b45309;
-}
-.sla--overdue{
-  border-color:rgba(220,38,38,.25);
-  background:rgba(220,38,38,.10);
-  color:var(--danger);
-}
+/* Dashboard: Owner cell */
 .owner-cell{
   display:flex;
   align-items:center;
@@ -2074,17 +2034,16 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   position:sticky;
   top:0;
 }
-/* Dashboard table column sizing (10 columns) */
+/* Dashboard table column sizing (9 columns) */
 .dashboard-page .table thead th:nth-child(1) { width: 80px; }  /* Time */
 .dashboard-page .table thead th:nth-child(2) { width: 210px; } /* Caller */
-.dashboard-page .table thead th:nth-child(3) { width: 120px; } /* Open */
-.dashboard-page .table thead th:nth-child(4) { width: 95px; }  /* SLA */
-.dashboard-page .table thead th:nth-child(5) { width: 85px; }  /* Call length */
-.dashboard-page .table thead th:nth-child(6) { width: 140px; } /* Type */
-.dashboard-page .table thead th:nth-child(7) { width: 110px; } /* Owner */
-.dashboard-page .table thead th:nth-child(8) { width: 140px; } /* Next step */
-.dashboard-page .table thead th:nth-child(9) { width: 160px; } /* Result */
-.dashboard-page .table thead th:nth-child(10) { width: 60px; } /* Actions */
+.dashboard-page .table thead th:nth-child(3) { width: 130px; } /* Status */
+.dashboard-page .table thead th:nth-child(4) { width: 90px; }  /* Call length */
+.dashboard-page .table thead th:nth-child(5) { width: 140px; } /* Type */
+.dashboard-page .table thead th:nth-child(6) { width: 110px; } /* Owner */
+.dashboard-page .table thead th:nth-child(7) { width: 140px; } /* Next step */
+.dashboard-page .table thead th:nth-child(8) { width: 240px; } /* Result */
+.dashboard-page .table thead th:nth-child(9) { width: 60px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
   border-bottom:1px solid rgba(226,232,240,.7);
@@ -2097,8 +2056,8 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   word-break:normal;
   overflow-wrap:normal;
 }
-.table tbody td:nth-child(9),
-.table tbody td:nth-child(10){
+.table tbody td:nth-child(8),
+.table tbody td:nth-child(9){
   overflow:visible;
 }
 
@@ -2143,25 +2102,31 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   word-break:normal;
   overflow-wrap:normal;
 }
-.dashboard-page .open-cell{
+.dashboard-page .status-cell{
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.dashboard-page .open-cell .pill{
+.dashboard-page .status-cell .pill{
   max-width:100%;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-.dashboard-page .sla-cell{
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-.dashboard-page .sla-cell .sla{
-  max-width:100%;
-  overflow:hidden;
-  text-overflow:ellipsis;
+.status-overdue-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-left:8px;
+  padding:2px 6px;
+  border-radius:999px;
+  border:1px solid rgba(220,38,38,.28);
+  background:rgba(220,38,38,.10);
+  color:#991b1b;
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  line-height:1;
 }
 .table tbody td:nth-child(3),
 .table tbody td:nth-child(4),
@@ -2170,15 +2135,15 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .table tbody td:nth-child(7){
   word-break:normal;
 }
-.table tbody td:nth-child(7),
-.table tbody td:nth-child(8){
+.table tbody td:nth-child(6),
+.table tbody td:nth-child(7){
   padding-left:8px;
   padding-right:8px;
 }
 
 /* Tighten spacing between Result and Actions */
-.dashboard-page .table tbody td:nth-child(6){ padding-right:4px; }
-.dashboard-page .table tbody td:nth-child(7){ padding-left:4px; }
+.dashboard-page .table tbody td:nth-child(5){ padding-right:4px; }
+.dashboard-page .table tbody td:nth-child(6){ padding-left:4px; }
 
 /* Result meta line under dropdown (e.g., "Responded in 12m") */
 .dashboard-page .result-meta{
@@ -2300,40 +2265,47 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   align-items:center;
   gap:8px;
 }
-.saved-tick{
+.save-indicator{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  width:18px;
-  height:18px;
+  padding:3px 8px;
   border-radius:999px;
-  border:1px solid rgba(22,163,74,.25);
-  background:rgba(22,163,74,.10);
-  color:#166534;
-  font-size:12px;
+  border:1px solid rgba(148,163,184,.26);
+  background:rgba(148,163,184,.10);
+  color:rgba(15,23,42,.78);
+  font-size:11px;
   font-weight:950;
+  white-space:nowrap;
   flex:0 0 auto;
 }
-
-.sla--met{
-  border-color:rgba(148,163,184,.25);
-  background:rgba(148,163,184,.08);
-  color:#64748b;
+.save-indicator[data-state="ok"]{
+  border-color:rgba(22,163,74,.28);
+  background:rgba(22,163,74,.10);
+  color:#166534;
+}
+.save-indicator[data-state="bad"]{
+  border-color:rgba(220,38,38,.28);
+  background:rgba(220,38,38,.10);
+  color:#991b1b;
 }
 
 /* If the viewport is tight, hide less-critical columns to keep everything on one screen */
 @media (max-width: 980px){
-  /* Keep SLA/Response visible (truth + operational clarity). Hide Type instead. */
-  .table thead th:nth-child(6),
-  .table tbody td:nth-child(6){
+  /* Keep the table on one screen: hide Type (least critical). */
+  .table thead th:nth-child(5),
+  .table tbody td:nth-child(5){
     display:none;
   }
   /* Keep layout stable on smaller widths */
-  .dashboard-page .table thead th:nth-child(1) { width: 96px; }  /* Time */
-  .dashboard-page .table thead th:nth-child(3) { width: 104px; } /* Status */
-  .dashboard-page .table thead th:nth-child(5) { width: 110px; } /* Type */
-  .dashboard-page .table thead th:nth-child(6) { width: 220px; } /* Result */
-  .dashboard-page .table thead th:nth-child(7) { width: 56px; }  /* Actions */
+  .dashboard-page .table thead th:nth-child(1) { width: 70px; }  /* Time */
+  .dashboard-page .table thead th:nth-child(2) { width: 180px; } /* Caller */
+  .dashboard-page .table thead th:nth-child(3) { width: 110px; } /* Status */
+  .dashboard-page .table thead th:nth-child(4) { width: 80px; }  /* Call length */
+  .dashboard-page .table thead th:nth-child(6) { width: 90px; }  /* Owner */
+  .dashboard-page .table thead th:nth-child(7) { width: 120px; } /* Next step */
+  .dashboard-page .table thead th:nth-child(8) { width: 180px; } /* Result */
+  .dashboard-page .table thead th:nth-child(9) { width: 50px; }  /* Actions */
 }
 .table code{
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -2434,6 +2406,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   font-weight:800;
   font-size:12px;
   color:rgba(17,24,39,.92);
+  line-height:38px;
   appearance:none;
   -webkit-appearance:none;
   -moz-appearance:none;
