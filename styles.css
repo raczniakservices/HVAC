@@ -492,16 +492,17 @@ button:active,a.btn:active{transform:translateY(0)}
 /* ======================================================
    Landing masthead (landing only — keeps dashboard topbar normal size)
 ====================================================== */
-.landing-page .topbar__inner{ height:84px; }
-/* Keep logo size the same as before, but stop forcing the header to match it. */
-.landing-page .brand__mark{ height:140px !important; }
-.landing-page .topbar__inner{ padding:10px 0; }
+.landing-page .topbar__inner{
+  height:72px;
+  padding:10px 0;
+}
+/* Keep the logo fully inside the header (prevents the "white box" overflow on mobile). */
+.landing-page .brand__mark{ height:48px !important; }
 .landing-page .brand{ align-items:center; }
 @media (max-width: 720px){
-  .landing-page .topbar__inner{height:72px}
-  .landing-page .topbar__inner{ padding:8px 0; }
+  .landing-page .topbar__inner{height:68px; padding:8px 0;}
   .landing-page .brand{gap:12px}
-  .landing-page .brand__mark{height:128px !important}
+  .landing-page .brand__mark{height:40px !important}
   .landing-page .brand__name{display:none}
   .landing-page .call-cta{ padding:0 14px; gap:8px; }
 }
