@@ -112,36 +112,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-    <!-- Follow-up modal -->
-    <div class="modal-overlay" id="followupOverlay" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-label="Record follow-up">
-        <div class="modal__header">
-          <div class="modal__title">Record follow-up</div>
-          <button class="icon-btn" id="followupCloseBtn" type="button" aria-label="Close">✕</button>
-        </div>
-        <div class="modal__body">
-          <div class="field field--full">
-            <label for="followupType">Action</label>
-            <select id="followupType">
-              <option value="call_attempt">Call attempt</option>
-              <option value="voicemail_left">Voicemail left</option>
-              <option value="text_sent">Text sent</option>
-              <option value="spoke_to_customer">Spoke to customer</option>
-              <option value="note">Note (does not start timer)</option>
-            </select>
-          </div>
-          <div class="field field--full">
-            <label for="followupNote">Note (optional)</label>
-            <textarea id="followupNote" rows="3" placeholder="Short note…"></textarea>
-          </div>
-          <div class="modal__actions">
-            <button class="btn btn--secondary" id="followupCancelBtn" type="button">Cancel</button>
-            <button class="btn btn--primary" id="followupSaveBtn" type="button">Save</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Timeline modal -->
     <div class="modal-overlay" id="timelineOverlay" hidden>
       <div class="modal modal--wide" role="dialog" aria-modal="true" aria-label="Lead timeline">
@@ -158,9 +128,6 @@
             <div class="timeline-col">
               <div class="section-label">Actions</div>
               <div class="panel">
-                <div class="panel__row">
-                  <button class="btn btn--secondary btn--block" id="timelineAddFollowupBtn" type="button">Record follow-up</button>
-                </div>
               </div>
             </div>
           </div>
@@ -168,7 +135,7 @@
       </div>
     </div>
 
-    <script src="./dashboard.js?v=17" defer></script>
+    <script src="./dashboard.js?v=18" defer></script>
   </body>
 </html>
 

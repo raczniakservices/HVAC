@@ -169,6 +169,7 @@ const mutatingIds = new Set();
 let isInteracting = false;
 const editingOutcomeIds = new Set();
 
+// Follow-up UI intentionally removed.
 let followupModalEventId = null;
 let timelineEventId = null;
 
@@ -367,42 +368,7 @@ async function clearAll({ confirmUnresolved } = {}) {
   return json;
 }
 
-async function apiGetFollowups(eventId) {
-  const key = getKey();
-  const url = new URL(withKey("/api/followups"));
-  url.searchParams.set("event_id", String(eventId));
-  const res = await fetch(url.toString(), { headers: { ...(key ? { "x-demo-key": key } : {}) } });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { message: text || "Unexpected response" };
-  }
-  if (!res.ok) throw new Error(json.message || "Failed to load followups");
-  return json;
-}
-
-async function apiCreateFollowup({ eventId, actionType, note }) {
-  const key = getKey();
-  const res = await fetch(withKey("/api/followups"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(key ? { "x-demo-key": key } : {}),
-    },
-    body: JSON.stringify({ event_id: Number(eventId), action_type: actionType, note }),
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { message: text || "Unexpected response" };
-  }
-  if (!res.ok) throw new Error(json.message || "Failed to create followup");
-  return json;
-}
+// Follow-up API UI intentionally removed.
 
 async function apiSetOwner({ eventId, owner }) {
   const key = getKey();
@@ -621,19 +587,7 @@ function buildTimelineItem({ title, time, body, className }) {
   `;
 }
 
-async function openFollowupModal(eventId) {
-  followupModalEventId = Number(eventId);
-  const note = document.getElementById("followupNote");
-  const type = document.getElementById("followupType");
-  if (note) note.value = "";
-  if (type) type.value = "call_attempt";
-  showOverlay("followupOverlay");
-}
-
-function closeFollowupModal() {
-  followupModalEventId = null;
-  hideOverlay("followupOverlay");
-}
+// Follow-up modal intentionally removed.
 
 async function openTimelineModal(eventId) {
   timelineEventId = Number(eventId);
@@ -660,10 +614,7 @@ async function openTimelineModal(eventId) {
   if (itemsEl) itemsEl.innerHTML = `<div class="muted">Loading…</div>`;
 
   try {
-    const [followups, emailLogs] = await Promise.all([
-      apiGetFollowups(eventId),
-      apiGetEmailLogs(eventId),
-    ]);
+    const emailLogs = await apiGetEmailLogs(eventId);
 
     const parts = [];
     parts.push(
@@ -681,16 +632,6 @@ async function openTimelineModal(eventId) {
           title: ev?.status === "answered" ? "Answered call" : "Missed call",
           time: formatTimeFull(ev?.createdAt),
           body: dur != null ? `Call duration: ${formatDuration(dur)}` : "",
-        })
-      );
-    }
-
-    for (const f of Array.isArray(followups) ? followups : []) {
-      parts.push(
-        buildTimelineItem({
-          title: `Follow-up: ${f.action_type}`,
-          time: fmtEpoch(f.created_at),
-          body: f.note || "",
         })
       );
     }
@@ -815,7 +756,6 @@ function renderRows(events) {
           </td>
           <td style="white-space:nowrap;">
             <span style="font-weight:900;">${escapeHtml(String(followupCount))}</span>
-            <button class="icon-btn js-add-followup" type="button" title="Add follow-up" aria-label="Add follow-up" style="margin-left:8px;">＋</button>
           </td>
           <td style="white-space:nowrap;">
             ${owner ? `<span style="font-weight:900;">${escapeHtml(owner)}</span>` : `<a href="#" class="mini-link js-set-owner">Set</a>`}
@@ -921,7 +861,6 @@ function renderRows(events) {
                 ${outcomeControlsHtml}
               </div>
               <button class="action-btn js-timeline" type="button" title="Timeline" aria-label="Timeline">Timeline</button>
-              <button class="action-btn js-add-followup" type="button" title="Add follow-up" aria-label="Add follow-up">+FU</button>
               <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">Call</a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
@@ -1022,50 +961,15 @@ async function main() {
     }
   });
 
-  // Modals
-  document.getElementById("followupCloseBtn")?.addEventListener("click", closeFollowupModal);
-  document.getElementById("followupCancelBtn")?.addEventListener("click", closeFollowupModal);
-  document.getElementById("followupOverlay")?.addEventListener("click", (e) => {
-    if (e.target && e.target.id === "followupOverlay") closeFollowupModal();
-  });
-  document.getElementById("followupSaveBtn")?.addEventListener("click", async () => {
-    if (!followupModalEventId) return;
-    const type = document.getElementById("followupType")?.value || "call_attempt";
-    const note = document.getElementById("followupNote")?.value || "";
-    const btn = document.getElementById("followupSaveBtn");
-    if (btn) btn.disabled = true;
-    pauseAutoRefresh(3000);
-    try {
-      await apiCreateFollowup({
-        eventId: followupModalEventId,
-        actionType: type,
-        note: note.trim() ? note.trim() : null,
-      });
-      closeFollowupModal();
-      await loadCalls({ silent: true, force: true });
-      showToast("Follow-up saved", "ok");
-      if (timelineEventId) openTimelineModal(timelineEventId);
-    } catch (e) {
-      showToast(e.message || "Failed to save follow-up", "bad");
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  });
-
+  // Modals (follow-up removed)
   document.getElementById("timelineCloseBtn")?.addEventListener("click", closeTimelineModal);
   document.getElementById("timelineOverlay")?.addEventListener("click", (e) => {
     if (e.target && e.target.id === "timelineOverlay") closeTimelineModal();
-  });
-  document.getElementById("timelineAddFollowupBtn")?.addEventListener("click", () => {
-    if (!timelineEventId) return;
-    closeTimelineModal();
-    openFollowupModal(timelineEventId);
   });
   // Booking confirmation email intentionally removed.
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (!document.getElementById("followupOverlay")?.hidden) closeFollowupModal();
     if (!document.getElementById("timelineOverlay")?.hidden) closeTimelineModal();
   });
 
@@ -1102,14 +1006,7 @@ async function main() {
       return;
     }
 
-    const addFollowupBtn = e.target.closest(".js-add-followup");
-    if (addFollowupBtn) {
-      const rowEl = addFollowupBtn.closest("[data-id]");
-      const id = rowEl?.dataset?.id;
-      if (!id) return;
-      openFollowupModal(id);
-      return;
-    }
+    // Follow-up UI intentionally removed.
 
     const setOwnerBtn = e.target.closest(".js-set-owner");
     if (setOwnerBtn) {
