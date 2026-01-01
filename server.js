@@ -136,10 +136,11 @@ function addColumnIfMissing(db, tableName, colName, colTypeSql) {
 
 function ensureLeadTruthLedgerSchema(db) {
   // Add required columns to CallEvent if missing (safe for existing DBs).
-  // NOTE: existing schema uses createdAt/outcomeAt as ISO TEXT; new ledger fields use epoch ms INTEGER.
+  // NOTE: store timestamps as ISO TEXT where possible (SQLite is flexible about types).
   addColumnIfMissing(db, "CallEvent", "owner", "TEXT");
-  addColumnIfMissing(db, "CallEvent", "handled_at", "INTEGER");
-  addColumnIfMissing(db, "CallEvent", "outcome_set_at", "INTEGER");
+  addColumnIfMissing(db, "CallEvent", "first_action_at", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "handled_at", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "outcome_set_at", "TEXT");
   addColumnIfMissing(db, "CallEvent", "overdue_sent_count", "INTEGER NOT NULL DEFAULT 0");
   addColumnIfMissing(db, "CallEvent", "overdue_last_sent_at", "INTEGER");
   addColumnIfMissing(db, "CallEvent", "customer_email", "TEXT");
@@ -152,17 +153,7 @@ function ensureLeadTruthLedgerSchema(db) {
   db.exec("CREATE INDEX IF NOT EXISTS idx_CallEvent_outcome ON CallEvent (outcome)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_CallEvent_createdAt_text ON CallEvent (createdAt DESC)");
 
-  // Backfill: answered calls are handled immediately (freeze response time at 0s).
-  // Safe because we only set handled_at when it's NULL.
-  try {
-    db.exec(`
-      UPDATE CallEvent
-      SET handled_at = COALESCE(handled_at, CAST(strftime('%s', createdAt) AS INTEGER) * 1000)
-      WHERE status = 'answered' AND handled_at IS NULL AND createdAt IS NOT NULL;
-    `);
-  } catch {
-    // ignore backfill errors (keeps startup resilient)
-  }
+  // Do NOT backfill first_action_at/handled_at here; migrations handle backfill deterministically.
 }
 
 function openDb() {
@@ -456,22 +447,53 @@ function guardedPage(req, res, fileName) {
 
 function rowToJson(row) {
   if (!row) return null;
+  const nowMs = Date.now();
+  const createdMs = Date.parse(String(row.createdAt || ""));
+  const firstActionIso = row.first_action_at ? String(row.first_action_at) : "";
+  const firstActionMs = firstActionIso ? Date.parse(firstActionIso) : NaN;
+
+  // Response time: time to first human action (owner or result).
   let responseSeconds = null;
-  try {
-    const createdMs = new Date(row.createdAt).getTime();
-    // Lead Truth Ledger: response time is to first handling.
-    // Answered calls are treated as handled at creation (0s).
-    if (row.status === "answered") {
-      responseSeconds = 0;
-    } else if (typeof row.handled_at === "number") {
-      const handledMs = Number(row.handled_at);
-      if (Number.isFinite(createdMs) && Number.isFinite(handledMs)) {
-        responseSeconds = Math.max(0, Math.floor((handledMs - createdMs) / 1000));
-      }
-    }
-  } catch {
-    responseSeconds = null;
+  if (Number.isFinite(createdMs) && Number.isFinite(firstActionMs)) {
+    responseSeconds = Math.max(0, Math.floor((firstActionMs - createdMs) / 1000));
   }
+
+  const needsOutcome = !(row.outcome && String(row.outcome).trim());
+  const slaMinRaw = typeof row.slaMinutes === "number" ? row.slaMinutes : Number(row.slaMinutes);
+  const slaMin = Number.isFinite(slaMinRaw) ? Math.max(1, Math.floor(slaMinRaw)) : Math.max(1, Math.floor(SLA_MINUTES || 15));
+  const dueMs = Number.isFinite(createdMs) ? createdMs + slaMin * 60_000 : NaN;
+  const hasFirstAction = !!(firstActionIso && firstActionIso.trim());
+  const overdue = !hasFirstAction && Number.isFinite(dueMs) && nowMs > dueMs;
+  const overdueMinutes = overdue ? Math.max(0, Math.floor((nowMs - dueMs) / 60_000)) : null;
+  const openLabel = !needsOutcome ? "Closed" : overdue ? `Overdue ${overdueMinutes}m` : "Open";
+
+  // Type label: clarify inbound call answer/miss for calls.
+  let typeLabel = "";
+  if (String(row.source) === "twilio") {
+    const dur =
+      typeof row.dialCallDurationSec === "number"
+        ? row.dialCallDurationSec
+        : typeof row.callDurationSec === "number"
+          ? row.callDurationSec
+          : null;
+    const tw = String(row.twilioStatus || "").toLowerCase().trim();
+    const isAnswered = String(row.status) === "answered" && typeof dur === "number" && dur > 0;
+    const isMissed =
+      String(row.status) === "missed" ||
+      tw === "no-answer" ||
+      tw === "busy" ||
+      tw === "failed" ||
+      tw === "canceled" ||
+      (String(row.status) !== "answered" && !(typeof dur === "number" && dur > 0));
+    typeLabel = isAnswered ? "Inbound call (Answered)" : isMissed ? "Inbound call (Missed)" : "Inbound call";
+  } else if (String(row.source) === "landing_form") {
+    typeLabel = "Form submit";
+  } else if (String(row.source) === "landing_call_click") {
+    typeLabel = "Call click";
+  } else {
+    typeLabel = row.source ? String(row.source) : "Unknown";
+  }
+
   return {
     id: row.id,
     createdAt: row.createdAt,
@@ -495,10 +517,9 @@ function rowToJson(row) {
         : row.dialCallDurationSec ?? null,
     assignedTo: row.assignedTo ?? null,
     owner: row.owner ?? null,
-    handled_at:
-      typeof row.handled_at === "number" ? row.handled_at : row.handled_at ?? null,
-    outcome_set_at:
-      typeof row.outcome_set_at === "number" ? row.outcome_set_at : row.outcome_set_at ?? null,
+    first_action_at: firstActionIso || null,
+    handled_at: row.handled_at ? String(row.handled_at) : null,
+    outcome_set_at: row.outcome_set_at ? String(row.outcome_set_at) : null,
     overdue_sent_count:
       typeof row.overdue_sent_count === "number"
         ? row.overdue_sent_count
@@ -522,6 +543,11 @@ function rowToJson(row) {
     slaBreachedAt: row.slaBreachedAt ?? null,
     escalatedAt: row.escalatedAt ?? null,
     responseSeconds,
+    overdue,
+    needs_outcome: needsOutcome,
+    open_label: openLabel,
+    overdue_minutes: overdueMinutes,
+    type_label: typeLabel,
   };
 }
 
@@ -981,7 +1007,7 @@ function runAutomationPass() {
 }
 
 async function runOverdueEmailPass() {
-  // Lead Truth Ledger: overdue = handled_at is NULL and age > SLA_MINUTES.
+  // Overdue: no human action yet (first_action_at is NULL) AND age > SLA_MINUTES.
   // Send at most 2 emails per lead (first at SLA, second at 60m).
   if (!OWNER_ALERT_EMAIL || !String(OWNER_ALERT_EMAIL).trim()) return { ok: true, sent: 0, skipped: "no_owner_email" };
   if (!RESEND_API_KEY || !String(RESEND_API_KEY).trim()) return { ok: true, sent: 0, skipped: "no_resend_key" };
@@ -1002,12 +1028,12 @@ async function runOverdueEmailPass() {
         source,
         status,
         outcome,
-        handled_at,
+        first_action_at,
         overdue_sent_count,
         overdue_last_sent_at
       FROM CallEvent
       WHERE (outcome IS NULL OR TRIM(outcome) = '')
-        AND handled_at IS NULL
+        AND (first_action_at IS NULL OR TRIM(first_action_at) = '')
       ORDER BY createdAt ASC
       LIMIT 200
     `.trim()
@@ -1092,7 +1118,6 @@ function upsertTwilioEvent({
     const ms = Date.parse(now);
     return Number.isFinite(ms) ? ms : Date.now();
   })();
-  const handledAtMsNewRow = status === "answered" ? createdMsNow : null;
 
   if (callSid && isValidCallSid(callSid)) {
     const existing = db
@@ -1100,13 +1125,8 @@ function upsertTwilioEvent({
       .get(callSid);
 
     if (existing) {
-      const existingCreatedMs = (() => {
-        const ms = Date.parse(String(existing.createdAt || ""));
-        return Number.isFinite(ms) ? ms : null;
-      })();
-      const handledAtMsExistingRow = status === "answered" ? existingCreatedMs : null;
       db.prepare(
-        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction), callDurationSec = COALESCE(?, callDurationSec), dialCallDurationSec = COALESCE(?, dialCallDurationSec), handled_at = CASE WHEN handled_at IS NULL AND ? IS NOT NULL THEN ? ELSE handled_at END WHERE callSid = ?"
+        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction), callDurationSec = COALESCE(?, callDurationSec), dialCallDurationSec = COALESCE(?, dialCallDurationSec) WHERE callSid = ?"
       ).run(
         callerNumber || null,
         status,
@@ -1115,8 +1135,6 @@ function upsertTwilioEvent({
         direction || null,
         callDurationSec ?? null,
         dialCallDurationSec ?? null,
-        handledAtMsExistingRow,
-        handledAtMsExistingRow,
         callSid
       );
       try {
@@ -1127,7 +1145,7 @@ function upsertTwilioEvent({
     }
 
     db.prepare(
-      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec, handled_at) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?)"
     ).run(
       now,
       callerNumber || "+10000000000",
@@ -1137,8 +1155,7 @@ function upsertTwilioEvent({
       twilioStatus || null,
       direction || null,
       callDurationSec ?? null,
-      dialCallDurationSec ?? null,
-      handledAtMsNewRow
+      dialCallDurationSec ?? null
     );
     try {
       const inserted = getCallEventByCallSid(callSid);
@@ -1157,7 +1174,7 @@ function upsertTwilioEvent({
 
   // Fallback if CallSid missing/invalid: insert as a best-effort event.
   db.prepare(
-    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec, handled_at) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?)"
   ).run(
     now,
     callerNumber || "+10000000000",
@@ -1166,8 +1183,7 @@ function upsertTwilioEvent({
     twilioStatus || null,
     direction || null,
     callDurationSec ?? null,
-    dialCallDurationSec ?? null,
-    handledAtMsNewRow
+    dialCallDurationSec ?? null
   );
 }
 
@@ -1854,12 +1870,7 @@ app.post("/api/followups", requireDemoAuth, (req, res) => {
       .prepare("INSERT INTO followups (event_id, action_type, note, created_at) VALUES (?, ?, ?, ?)")
       .run(eventId, actionType, note, now);
 
-    if (!row.handled_at && followupSetsHandledAt(actionType)) {
-      db.prepare("UPDATE CallEvent SET handled_at = ? WHERE id = ? AND handled_at IS NULL").run(
-        now,
-        eventId
-      );
-    }
+    // Follow-ups no longer mark the lead as handled; handled_at is set only when Result is set.
 
     db.exec("COMMIT");
 
@@ -1891,7 +1902,21 @@ app.post("/api/owner", requireDemoAuth, (req, res) => {
   const ownerRaw = req.body?.owner;
   const owner = ownerRaw === null ? null : clampStr(ownerRaw, 80) || null;
 
-  const result = db.prepare("UPDATE CallEvent SET owner = ? WHERE id = ?").run(owner, eventId);
+  const nowIso = new Date().toISOString();
+  const shouldSetFirstAction = !!(owner && String(owner).trim());
+  const result = db
+    .prepare(
+      `
+      UPDATE CallEvent
+      SET owner = ?,
+          first_action_at = CASE
+            WHEN first_action_at IS NULL AND ? = 1 THEN ?
+            ELSE first_action_at
+          END
+      WHERE id = ?
+    `.trim()
+    )
+    .run(owner, shouldSetFirstAction ? 1 : 0, nowIso, eventId);
   if (result.changes === 0) return res.status(404).json({ error: "Not found" });
   return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });
 });
@@ -1912,27 +1937,23 @@ app.post("/api/result", requireDemoAuth, (req, res) => {
   if (!row) return res.status(404).json({ error: "Not found" });
 
   const nowIso = new Date().toISOString();
-  const nowMs = Date.now();
-  const createdMs = parseCreatedAtMs(row);
-
-  // Answered call handling: ensure handled_at is set to created time (0s response) if missing.
-  const shouldSetHandledAtForAnswered = row.status === "answered" && !row.handled_at && Number.isFinite(createdMs);
 
   if (outcome === null) {
     db.prepare(
-      "UPDATE CallEvent SET outcome = NULL, outcomeAt = NULL, outcome_set_at = NULL WHERE id = ?"
+      "UPDATE CallEvent SET outcome = NULL, outcomeAt = NULL, outcome_set_at = NULL, handled_at = NULL WHERE id = ?"
     ).run(eventId);
   } else {
     db.prepare(
-      "UPDATE CallEvent SET outcome = ?, outcomeAt = ?, outcome_set_at = ? WHERE id = ?"
-    ).run(outcome, nowIso, nowMs, eventId);
-  }
-
-  if (shouldSetHandledAtForAnswered) {
-    db.prepare("UPDATE CallEvent SET handled_at = COALESCE(handled_at, ?) WHERE id = ?").run(
-      createdMs,
-      eventId
-    );
+      `
+      UPDATE CallEvent
+      SET outcome = ?,
+          outcomeAt = ?,
+          outcome_set_at = ?,
+          handled_at = ?,
+          first_action_at = COALESCE(first_action_at, ?)
+      WHERE id = ?
+    `.trim()
+    ).run(outcome, nowIso, nowIso, nowIso, nowIso, eventId);
   }
 
   return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });

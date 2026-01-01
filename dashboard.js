@@ -517,23 +517,16 @@ function getSlaMinutes(ev) {
 }
 
 function getLeadState(ev) {
-  const hasOutcome = !!ev?.outcome;
+  const hasOutcome = !!(ev?.outcome && String(ev.outcome).trim());
   if (hasOutcome) return { state: "closed", label: "Closed", cls: "pill pill--ok" };
 
-  const handled = typeof ev?.handled_at === "number" && Number.isFinite(ev.handled_at);
-  if (handled) return { state: "handled", label: "Handled", cls: "pill pill--muted" };
-
-  const createdMs = getCreatedAtMs(ev);
-  const mins = createdMs ? minutesBetweenMs(createdMs, Date.now()) : null;
-  const slaMin = getSlaMinutes(ev);
-  const overdue = typeof mins === "number" && mins > slaMin;
+  const isOverdue = !!ev?.overdue;
+  const label = ev?.open_label ? String(ev.open_label) : isOverdue ? "Overdue" : "Open";
   return {
-    state: overdue ? "overdue" : "open",
-    label: `${overdue ? "Overdue" : "Open"} ${typeof mins === "number" ? `${mins}m` : "—"}`,
-    cls: overdue ? "pill pill--danger" : "pill pill--warn",
-    overdue,
-    mins,
-    slaMin,
+    state: isOverdue ? "overdue" : "open",
+    label,
+    cls: isOverdue ? "pill pill--danger" : "pill pill--warn",
+    overdue: isOverdue,
   };
 }
 
@@ -617,7 +610,10 @@ function renderRows(events) {
           : typeof ev?.callDurationSec === "number"
             ? ev.callDurationSec
             : null;
-      const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+      const isMissedCall =
+        String(ev?.source || "") === "twilio" &&
+        String(ev?.type_label || "").toLowerCase().includes("(missed)");
+      const callLenText = isMissedCall ? "—" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
       // Show captured details for form leads (stored in note)
       const detailsHtml =
@@ -657,6 +653,7 @@ function renderRows(events) {
       const followupCount = Number(ev?.followup_count || 0);
       const owner = ev?.owner ? String(ev.owner) : "";
 
+      const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
       return `
         <tr data-id="${escapeHtml(ev.id)}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
@@ -669,7 +666,7 @@ function renderRows(events) {
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
-              ${sourceInfo.label}
+              ${escapeHtml(typeLabel)}
             </span>
           </td>
           <td style="white-space:nowrap;">
@@ -710,7 +707,10 @@ function renderRows(events) {
             : typeof ev?.callDurationSec === "number"
               ? ev.callDurationSec
               : null;
-        const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+        const isMissedCall =
+          String(ev?.source || "") === "twilio" &&
+          String(ev?.type_label || "").toLowerCase().includes("(missed)");
+        const callLenText = isMissedCall ? "—" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
         const isFormLead = ev?.source === "landing_form";
         const detailsText = isFormLead && ev.note ? String(ev.note) : "";
@@ -738,6 +738,7 @@ function renderRows(events) {
           ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
         `;
 
+        const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
         return `
           <div class="dashboard-card" data-id="${escapeHtml(ev.id)}">
             <div class="dashboard-card__top">
@@ -750,7 +751,7 @@ function renderRows(events) {
               <div class="dashboard-card__badges">
                 <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
                 <span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span>
-                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(sourceInfo.label)}</span>
+                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(typeLabel)}</span>
               </div>
             </div>
 
