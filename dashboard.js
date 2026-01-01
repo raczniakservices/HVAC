@@ -776,11 +776,11 @@ function renderRows(events) {
         return `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select><span class="save-indicator" aria-live="polite" hidden></span>`;
       })();
 
-      const missedPill = isMissedInbound
+      const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
+      const missedPill = missedActionable
         ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>`
         : "";
-      const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
-      const typeSub = isMissedInbound ? `<div class="type-sub muted">Missed call</div>` : "";
+      const typeSub = missedActionable ? `<div class="type-sub muted">Missed call</div>` : "";
       const typeHtml = `
         <div class="type-main" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
           ${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}${missedPill}

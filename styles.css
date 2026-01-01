@@ -2036,13 +2036,13 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 /* Dashboard table column sizing (9 columns) */
 .dashboard-page .table thead th:nth-child(1) { width: 80px; }  /* Time */
-.dashboard-page .table thead th:nth-child(2) { width: 210px; } /* Caller */
-.dashboard-page .table thead th:nth-child(3) { width: 130px; } /* Status */
-.dashboard-page .table thead th:nth-child(4) { width: 90px; }  /* Call length */
+.dashboard-page .table thead th:nth-child(2) { width: 200px; } /* Caller */
+.dashboard-page .table thead th:nth-child(3) { width: 160px; } /* Status */
+.dashboard-page .table thead th:nth-child(4) { width: 85px; }  /* Call length */
 .dashboard-page .table thead th:nth-child(5) { width: 140px; } /* Type */
-.dashboard-page .table thead th:nth-child(6) { width: 110px; } /* Owner */
-.dashboard-page .table thead th:nth-child(7) { width: 140px; } /* Next step */
-.dashboard-page .table thead th:nth-child(8) { width: 240px; } /* Result */
+.dashboard-page .table thead th:nth-child(6) { width: 105px; } /* Owner */
+.dashboard-page .table thead th:nth-child(7) { width: 135px; } /* Next step */
+.dashboard-page .table thead th:nth-child(8) { width: 235px; } /* Result */
 .dashboard-page .table thead th:nth-child(9) { width: 60px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
@@ -2104,13 +2104,6 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 .dashboard-page .status-cell{
   white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-.dashboard-page .status-cell .pill{
-  max-width:100%;
-  overflow:hidden;
-  text-overflow:ellipsis;
 }
 .status-overdue-badge{
   display:inline-flex;
