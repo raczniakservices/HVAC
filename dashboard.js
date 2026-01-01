@@ -169,6 +169,9 @@ const mutatingIds = new Set();
 let isInteracting = false;
 const editingOutcomeIds = new Set();
 
+let followupModalEventId = null;
+let timelineEventId = null;
+
 function applyDemoFilter(events) {
   const rows = Array.isArray(events) ? events : [];
   // Client-ready: never show demo/simulator-generated rows in the customer dashboard/export.
@@ -185,19 +188,13 @@ function computeResponseSeconds(ev) {
   if (typeof ev?.responseSeconds === "number" && Number.isFinite(ev.responseSeconds)) {
     return ev.responseSeconds;
   }
-  const created = parseIsoMs(ev?.createdAt);
-  const followed = parseIsoMs(ev?.followedUpAt);
-  if (!Number.isFinite(created) || !Number.isFinite(followed)) return null;
-  return Math.max(0, Math.floor((followed - created) / 1000));
+  return null;
 }
 
 function computeRespondedSeconds(ev) {
   const rs = computeResponseSeconds(ev);
   if (typeof rs === "number" && Number.isFinite(rs)) return rs;
-  const created = parseIsoMs(ev?.createdAt);
-  const outcomeAt = parseIsoMs(ev?.outcomeAt);
-  if (!Number.isFinite(created) || !Number.isFinite(outcomeAt)) return null;
-  return Math.max(0, Math.floor((outcomeAt - created) / 1000));
+  return null;
 }
 
 function getCallLengthSeconds(ev) {
@@ -296,7 +293,7 @@ function pauseAutoRefresh(ms) {
 
 async function fetchCalls() {
   const key = getKey();
-  const res = await fetch(withKey("/api/calls?limit=15"), {
+  const res = await fetch(withKey("/api/events?limit=50"), {
     headers: { ...(key ? { "x-demo-key": key } : {}) },
   });
   const text = await res.text();
@@ -311,33 +308,15 @@ async function fetchCalls() {
   return json;
 }
 
-async function followUp(id) {
+async function setResult(id, result) {
   const key = getKey();
-  const res = await fetch(withKey(`/api/calls/${encodeURIComponent(id)}/follow-up`), {
-    method: "POST",
-    headers: { ...(key ? { "x-demo-key": key } : {}) },
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { message: text || "Unexpected response" };
-  }
-
-  if (!res.ok) throw new Error(json.message || "Failed to follow up");
-  return json;
-}
-
-async function setOutcome(id, outcome) {
-  const key = getKey();
-  const res = await fetch(withKey(`/api/calls/${encodeURIComponent(id)}/outcome`), {
+  const res = await fetch(withKey(`/api/result`), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(key ? { "x-demo-key": key } : {}),
     },
-    body: JSON.stringify({ outcome }),
+    body: JSON.stringify({ event_id: Number(id), result }),
   });
   const text = await res.text();
   let json;
@@ -346,13 +325,15 @@ async function setOutcome(id, outcome) {
   } catch {
     json = { message: text || "Unexpected response" };
   }
-  if (!res.ok) throw new Error(json.message || "Failed to set outcome");
+  if (!res.ok) throw new Error(json.message || "Failed to set result");
   return json;
 }
 
-async function deleteCall(id) {
+async function deleteCall(id, { confirmUnresolved } = {}) {
   const key = getKey();
-  const res = await fetch(withKey(`/api/calls/${encodeURIComponent(id)}`), {
+  const url = new URL(withKey(`/api/events/${encodeURIComponent(id)}`));
+  if (confirmUnresolved) url.searchParams.set("confirm_unresolved", "true");
+  const res = await fetch(url.toString(), {
     method: "DELETE",
     headers: { ...(key ? { "x-demo-key": key } : {}) },
   });
@@ -367,9 +348,11 @@ async function deleteCall(id) {
   return json;
 }
 
-async function clearAll() {
+async function clearAll({ confirmUnresolved } = {}) {
   const key = getKey();
-  const res = await fetch(withKey("/api/calls/clear"), {
+  const url = new URL(withKey("/api/clear_all"));
+  if (confirmUnresolved) url.searchParams.set("confirm_unresolved", "true");
+  const res = await fetch(url.toString(), {
     method: "POST",
     headers: { ...(key ? { "x-demo-key": key } : {}) },
   });
@@ -381,6 +364,105 @@ async function clearAll() {
     json = { message: text || "Unexpected response" };
   }
   if (!res.ok) throw new Error(json.message || "Failed to clear");
+  return json;
+}
+
+async function apiGetFollowups(eventId) {
+  const key = getKey();
+  const url = new URL(withKey("/api/followups"));
+  url.searchParams.set("event_id", String(eventId));
+  const res = await fetch(url.toString(), { headers: { ...(key ? { "x-demo-key": key } : {}) } });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to load followups");
+  return json;
+}
+
+async function apiCreateFollowup({ eventId, actionType, note }) {
+  const key = getKey();
+  const res = await fetch(withKey("/api/followups"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(key ? { "x-demo-key": key } : {}),
+    },
+    body: JSON.stringify({ event_id: Number(eventId), action_type: actionType, note }),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to create followup");
+  return json;
+}
+
+async function apiSetOwner({ eventId, owner }) {
+  const key = getKey();
+  const res = await fetch(withKey("/api/owner"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(key ? { "x-demo-key": key } : {}),
+    },
+    body: JSON.stringify({ event_id: Number(eventId), owner }),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to set owner");
+  return json;
+}
+
+async function apiGetEmailLogs(eventId) {
+  const key = getKey();
+  const url = new URL(withKey("/api/email_logs"));
+  url.searchParams.set("event_id", String(eventId));
+  const res = await fetch(url.toString(), { headers: { ...(key ? { "x-demo-key": key } : {}) } });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to load email logs");
+  return json;
+}
+
+async function apiSendBookingConfirmation({ eventId, appointmentDate, appointmentWindow }) {
+  const key = getKey();
+  const res = await fetch(withKey("/api/send_booking_confirmation"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(key ? { "x-demo-key": key } : {}),
+    },
+    body: JSON.stringify({
+      event_id: Number(eventId),
+      appointment_date: appointmentDate || null,
+      appointment_window: appointmentWindow || null,
+    }),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to send booking confirmation");
   return json;
 }
 
@@ -441,15 +523,14 @@ function setSummary(events) {
     if (el) el.textContent = String(val);
   };
 
-  // "Unhandled" means we still need to take action.
-  // - For calls: missed and not followed up
-  // - For forms: treated as unhandled until followed up (status is stored as 'missed' for simplicity)
-  const missed = events.filter((e) => e.status === "missed" && !e.followedUp).length;
-  const followedUp = events.filter((e) => !!e.followedUp).length;
+  // Lead Truth Ledger
+  // Unhandled = needs first real attempt (handled_at is null) AND no outcome.
+  const missed = events.filter((e) => !e?.outcome && (e?.handled_at === null || typeof e?.handled_at === "undefined")).length;
+  const followedUp = events.filter((e) => typeof e?.handled_at === "number").length;
   const booked = events.filter((e) => e.outcome === "booked").length;
   const lost = events.filter((e) => {
     if (e.outcome === "already_hired" || e.outcome === "wrong_number") return true;
-    if (e.outcome === "no_answer" && e.followedUp) return true;
+    if (e.outcome === "no_answer" && typeof e?.handled_at === "number") return true;
     return false;
   }).length;
 
@@ -475,6 +556,232 @@ function formatAutomationKind(kind) {
 
 // Automation log UI removed (keeps backend behavior unchanged; just not shown).
 
+function minutesBetweenMs(a, b) {
+  const d = Number(b) - Number(a);
+  if (!Number.isFinite(d)) return null;
+  return Math.max(0, Math.floor(d / 60000));
+}
+
+function getCreatedAtMs(ev) {
+  const ms = parseIsoMs(ev?.createdAt);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function getSlaMinutes(ev) {
+  const n = Number(ev?.slaMinutes);
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 15;
+}
+
+function getLeadState(ev) {
+  const hasOutcome = !!ev?.outcome;
+  if (hasOutcome) return { state: "closed", label: "Closed", cls: "pill pill--ok" };
+
+  const handled = typeof ev?.handled_at === "number" && Number.isFinite(ev.handled_at);
+  if (handled) return { state: "handled", label: "Handled", cls: "pill pill--muted" };
+
+  const createdMs = getCreatedAtMs(ev);
+  const mins = createdMs ? minutesBetweenMs(createdMs, Date.now()) : null;
+  const slaMin = getSlaMinutes(ev);
+  const overdue = typeof mins === "number" && mins > slaMin;
+  return {
+    state: overdue ? "overdue" : "open",
+    label: `${overdue ? "Overdue" : "Open"} ${typeof mins === "number" ? `${mins}m` : "—"}`,
+    cls: overdue ? "pill pill--danger" : "pill pill--warn",
+    overdue,
+    mins,
+    slaMin,
+  };
+}
+
+function getSlaDotClass(ev) {
+  const rs = computeResponseSeconds(ev);
+  const state = getLeadState(ev);
+  if (typeof rs === "number") {
+    if (rs <= 5 * 60) return "sla-dot sla-dot--green";
+    if (rs <= 30 * 60) return "sla-dot sla-dot--yellow";
+    return "sla-dot sla-dot--red";
+  }
+  if (state?.state === "overdue") return "sla-dot sla-dot--red";
+  return "sla-dot";
+}
+
+function showOverlay(overlayId) {
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  el.hidden = false;
+}
+
+function hideOverlay(overlayId) {
+  const el = document.getElementById(overlayId);
+  if (!el) return;
+  el.hidden = true;
+}
+
+function fmtEpoch(ms) {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return "";
+  try {
+    return new Date(n).toLocaleString();
+  } catch {
+    return String(ms);
+  }
+}
+
+function buildTimelineItem({ title, time, body, className }) {
+  const t = title ? String(title) : "Event";
+  const tm = time ? String(time) : "";
+  const b = body ? String(body) : "";
+  const cls = className ? `timeline-item ${String(className)}` : "timeline-item";
+  return `
+    <div class="${escapeHtml(cls)}">
+      <div class="timeline-item__top">
+        <div class="timeline-item__title">${escapeHtml(t)}</div>
+        <div class="timeline-item__time">${escapeHtml(tm)}</div>
+      </div>
+      ${b ? `<div class="timeline-item__body">${escapeHtml(b)}</div>` : ""}
+    </div>
+  `;
+}
+
+async function openFollowupModal(eventId) {
+  followupModalEventId = Number(eventId);
+  const note = document.getElementById("followupNote");
+  const type = document.getElementById("followupType");
+  if (note) note.value = "";
+  if (type) type.value = "call_attempt";
+  showOverlay("followupOverlay");
+}
+
+function closeFollowupModal() {
+  followupModalEventId = null;
+  hideOverlay("followupOverlay");
+}
+
+async function openTimelineModal(eventId) {
+  timelineEventId = Number(eventId);
+  const ev = getEventById(eventId);
+  const title = document.getElementById("timelineTitle");
+  if (title) {
+    title.textContent = ev?.callerNumber ? `Timeline — ${ev.callerNumber}` : "Lead timeline";
+  }
+
+  // Reset booking panel
+  const bookingStatus = document.getElementById("bookingStatus");
+  if (bookingStatus) bookingStatus.textContent = "";
+  const apptDate = document.getElementById("apptDate");
+  const apptWindow = document.getElementById("apptWindow");
+  if (apptDate) apptDate.value = ev?.appointment_date ? String(ev.appointment_date) : "";
+  if (apptWindow) apptWindow.value = ev?.appointment_window ? String(ev.appointment_window) : "";
+
+  showOverlay("timelineOverlay");
+
+  const itemsEl = document.getElementById("timelineItems");
+  if (itemsEl) itemsEl.innerHTML = `<div class="muted">Loading…</div>`;
+
+  try {
+    const [followups, emailLogs] = await Promise.all([
+      apiGetFollowups(eventId),
+      apiGetEmailLogs(eventId),
+    ]);
+
+    const parts = [];
+    parts.push(
+      buildTimelineItem({
+        title: "Lead created",
+        time: formatTimeFull(ev?.createdAt),
+        body: `${formatSource(ev?.source).label}${ev?.note ? ` — ${String(ev.note)}` : ""}`,
+      })
+    );
+
+    if (ev?.source === "twilio") {
+      const dur = getCallLengthSeconds(ev);
+      parts.push(
+        buildTimelineItem({
+          title: ev?.status === "answered" ? "Answered call" : "Missed call",
+          time: formatTimeFull(ev?.createdAt),
+          body: dur != null ? `Call duration: ${formatDuration(dur)}` : "",
+        })
+      );
+    }
+
+    for (const f of Array.isArray(followups) ? followups : []) {
+      parts.push(
+        buildTimelineItem({
+          title: `Follow-up: ${f.action_type}`,
+          time: fmtEpoch(f.created_at),
+          body: f.note || "",
+        })
+      );
+    }
+
+    if (ev?.outcome) {
+      parts.push(
+        buildTimelineItem({
+          title: `Outcome set: ${ev.outcome}`,
+          time: ev?.outcomeAt ? formatTimeFull(ev.outcomeAt) : "",
+          body: "",
+        })
+      );
+    }
+
+    for (const m of Array.isArray(emailLogs) ? emailLogs : []) {
+      const receipt = m.provider_message_id ? String(m.provider_message_id).slice(0, 10) : "";
+      const isFailed = String(m.status || "").toLowerCase() === "failed";
+      parts.push(
+        buildTimelineItem({
+          title: isFailed ? `EMAIL FAILED: ${m.email_type}` : `Email: ${m.email_type} (sent)`,
+          time: fmtEpoch(m.created_at),
+          body: `${m.to_email}${receipt ? ` — receipt ${receipt}…` : ""}${
+            isFailed && m.error_text ? ` — ${m.error_text}` : ""
+          }`,
+          className: isFailed ? "timeline-item--danger" : "timeline-item--ok",
+        })
+      );
+    }
+
+    if (itemsEl) itemsEl.innerHTML = parts.join("");
+
+    // Enable/disable booking email UI based on requirements
+    const sendBtn = document.getElementById("sendBookingBtn");
+    const canSendBooking = ev?.outcome === "booked" && !!String(ev?.customer_email || "").trim();
+    if (sendBtn) sendBtn.disabled = !canSendBooking;
+
+    // Booking status + retry affordance on failure
+    const bookingLogs = (Array.isArray(emailLogs) ? emailLogs : [])
+      .filter((x) => x && x.email_type === "customer_booking_confirmation")
+      .slice()
+      .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+    const lastBooking = bookingLogs.length ? bookingLogs[bookingLogs.length - 1] : null;
+    const lastFailed = lastBooking && String(lastBooking.status || "").toLowerCase() === "failed";
+    if (sendBtn) {
+      sendBtn.textContent = lastFailed ? "Retry booking confirmation email" : "Send booking confirmation email";
+    }
+
+    if (bookingStatus) {
+      if (!canSendBooking) {
+        bookingStatus.textContent =
+          ev?.outcome !== "booked"
+            ? "Set Result to Booked to enable booking email."
+            : "Customer email is missing (form email is optional).";
+      } else if (lastFailed) {
+        bookingStatus.textContent = `Last send FAILED: ${lastBooking?.error_text || "Unknown error"}`;
+      } else if (lastBooking && String(lastBooking.status || "").toLowerCase() === "sent") {
+        bookingStatus.textContent = `Last sent: ${fmtEpoch(lastBooking.created_at)}${lastBooking.provider_message_id ? ` (receipt ${String(lastBooking.provider_message_id).slice(0, 10)}…)` : ""}`;
+      } else {
+        bookingStatus.textContent = "";
+      }
+    }
+  } catch (e) {
+    if (itemsEl) itemsEl.innerHTML = `<div class="muted">Failed to load timeline: ${escapeHtml(e?.message || "Unknown error")}</div>`;
+  }
+}
+
+function closeTimelineModal() {
+  timelineEventId = null;
+  hideOverlay("timelineOverlay");
+}
+
 function renderRows(events) {
   const tbody = $("#rows");
   if (!tbody) return;
@@ -485,7 +792,7 @@ function renderRows(events) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
-    tbody.innerHTML = `<tr><td colspan="7" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="muted">${escapeHtml(msg)}</td></tr>`;
     if (cards) {
       cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
     }
@@ -494,10 +801,6 @@ function renderRows(events) {
 
   const tableHtml = events
     .map((ev) => {
-      const isMissed = ev.status === "missed";
-      // Follow-up is now driven by selecting a Result (Outcome).
-      // We still compute responseSeconds from followedUpAt in the backend for metrics.
-
       const sourceInfo = formatSource(ev.source);
 
       const callLenSec =
@@ -508,16 +811,9 @@ function renderRows(events) {
             : null;
       const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
-      // Display status:
-      // - Twilio calls: show answered/missed
-      // - Form submits: show New lead / Followed up (instead of implying a missed phone call)
-      const isFormLead = ev.source === "landing_form";
-      const statusClass = isFormLead ? (ev.followedUp ? "answered" : "missed") : ev.status;
-      const statusLabel = isFormLead ? (ev.followedUp ? "followed up" : "new lead") : ev.status;
-
       // Show captured details for form leads (stored in note)
       const detailsHtml =
-        isFormLead && ev.note
+        ev.source === "landing_form" && ev.note
           ? `<div class="caller-cell__details muted">${escapeHtml(ev.note)}</div>`
           : "";
 
@@ -548,28 +844,40 @@ function renderRows(events) {
           ? `<div class="result-meta muted">Responded in ${escapeHtml(formatDuration(respondedSeconds))}</div>`
           : "";
 
-      // No colored bars — keep the table clean and scannable for owners
-      const rowClass = "";
+      const state = getLeadState(ev);
+      const slaDotClass = getSlaDotClass(ev);
+      const followupCount = Number(ev?.followup_count || 0);
+      const owner = ev?.owner ? String(ev.owner) : "";
 
       return `
-        <tr data-id="${escapeHtml(ev.id)}" class="${rowClass}">
+        <tr data-id="${escapeHtml(ev.id)}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
             ${detailsHtml}
           </td>
-          <td><span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span></td>
+          <td><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span></td>
+          <td style="text-align:center;"><span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span></td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
               ${sourceInfo.label}
             </span>
           </td>
+          <td style="white-space:nowrap;">
+            <span style="font-weight:900;">${escapeHtml(String(followupCount))}</span>
+            <button class="icon-btn js-add-followup" type="button" title="Add follow-up" aria-label="Add follow-up" style="margin-left:8px;">＋</button>
+          </td>
+          <td style="white-space:nowrap;">
+            ${owner ? `<span style="font-weight:900;">${escapeHtml(owner)}</span>` : `<a href="#" class="mini-link js-set-owner">Set</a>`}
+          </td>
           <td style="overflow:visible;">
             ${resultDisplay}
+            ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
             ${respondedHtml}
           </td>
           <td class="actions-td" style="overflow:visible;">
+            <button class="icon-btn js-timeline" type="button" title="Timeline" aria-label="Timeline">⎯⎯</button>
             <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M9 3h6l1 2h5v2H3V5h5l1-2z" fill="currentColor"/>
@@ -588,9 +896,6 @@ function renderRows(events) {
   if (cards) {
     cards.innerHTML = events
       .map((ev) => {
-        const rs = computeResponseSeconds(ev);
-        const responseText = typeof rs === "number" ? formatDuration(rs) : "—";
-
         const sourceInfo = formatSource(ev.source);
 
         const callLenSec =
@@ -601,11 +906,10 @@ function renderRows(events) {
               : null;
         const callLenText = typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
-        const isFormLead = ev.source === "landing_form";
-        const statusClass = isFormLead ? (ev.followedUp ? "answered" : "missed") : ev.status;
-        const statusLabel = isFormLead ? (ev.followedUp ? "followed up" : "new lead") : ev.status;
-
+        const isFormLead = ev?.source === "landing_form";
         const detailsText = isFormLead && ev.note ? String(ev.note) : "";
+        const display = getDisplayStatus(ev);
+        const statusLabel = display?.statusLabel || "";
 
         const currentOutcome = ev.outcome ? String(ev.outcome) : "";
         const outcomeOption =
@@ -616,16 +920,16 @@ function renderRows(events) {
           return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
         }).join("");
 
-        // Outcome display with timestamp
-        let outcomeDisplay = `<span style="color:${outcomeOption.color}; font-weight:800;">${escapeHtml(outcomeOption.displayLabel)}</span>`;
-        if (ev.outcomeAt && currentOutcome) {
-          outcomeDisplay += `<span class="muted" style="font-size:12px; margin-left:8px;">${escapeHtml(formatTimeShort(ev.outcomeAt))}</span>`;
-        }
+        const state = getLeadState(ev);
+        const slaDotClass = getSlaDotClass(ev);
+        const followupCount = Number(ev?.followup_count || 0);
+        const owner = ev?.owner ? String(ev.owner) : "";
 
         const outcomeControlsHtml = `
           <select class="outcome-select js-outcome" aria-label="Set Result">
             ${outcomeOptionsHtml}
           </select>
+          ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
         `;
 
         return `
@@ -635,9 +939,11 @@ function renderRows(events) {
                 <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
                 <div class="dashboard-card__caller">${escapeHtml(ev.callerNumber || "")}</div>
                 ${detailsText ? `<div class="dashboard-card__details">${escapeHtml(detailsText)}</div>` : ""}
+                ${owner ? `<div class="muted" style="font-size:12px; margin-top:4px;">Owner: <strong>${escapeHtml(owner)}</strong></div>` : ""}
               </div>
               <div class="dashboard-card__badges">
-                <span class="status-badge status-badge--${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>
+                <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
+                <span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span>
                 <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(sourceInfo.label)}</span>
               </div>
             </div>
@@ -648,8 +954,8 @@ function renderRows(events) {
                 <div class="dashboard-kv__value">${escapeHtml(callLenText)}</div>
               </div>
               <div class="dashboard-kv">
-                <div class="dashboard-kv__label">Response</div>
-                <div class="dashboard-kv__value">${escapeHtml(responseText)}</div>
+                <div class="dashboard-kv__label">Follow-ups</div>
+                <div class="dashboard-kv__value">${escapeHtml(String(followupCount))}</div>
               </div>
               <div class="dashboard-kv">
                 <div class="dashboard-kv__label">Result</div>
@@ -665,6 +971,8 @@ function renderRows(events) {
               <div style="flex:1; min-width:0;">
                 ${outcomeControlsHtml}
               </div>
+              <button class="action-btn js-timeline" type="button" title="Timeline" aria-label="Timeline">Timeline</button>
+              <button class="action-btn js-add-followup" type="button" title="Add follow-up" aria-label="Add follow-up">+FU</button>
               <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">Call</a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
             </div>
@@ -740,10 +1048,21 @@ async function main() {
   $("#exportBtn")?.addEventListener("click", () => exportVisibleRowsToCsv());
   $("#refreshBtn")?.addEventListener("click", () => loadCalls({ silent: false, force: true }));
   $("#clearAllBtn")?.addEventListener("click", async () => {
-    if (!confirm("Clear all call events? (demo cleanup)")) return;
+    if (!confirm("Clear all leads?")) return;
     pauseAutoRefresh(3000);
     try {
-      await clearAll();
+      try {
+        await clearAll();
+      } catch (e) {
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("unresolved")) {
+          const ok = confirm("There are leads with no Result. Clear anyway?");
+          if (!ok) throw e;
+          await clearAll({ confirmUnresolved: true });
+        } else {
+          throw e;
+        }
+      }
       eventsCache = [];
       renderRows(eventsCache);
       setSummary(eventsCache);
@@ -752,6 +1071,81 @@ async function main() {
     } catch (e) {
       showToast(e.message || "Failed to clear", "bad");
     }
+  });
+
+  // Modals
+  document.getElementById("followupCloseBtn")?.addEventListener("click", closeFollowupModal);
+  document.getElementById("followupCancelBtn")?.addEventListener("click", closeFollowupModal);
+  document.getElementById("followupOverlay")?.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "followupOverlay") closeFollowupModal();
+  });
+  document.getElementById("followupSaveBtn")?.addEventListener("click", async () => {
+    if (!followupModalEventId) return;
+    const type = document.getElementById("followupType")?.value || "call_attempt";
+    const note = document.getElementById("followupNote")?.value || "";
+    const btn = document.getElementById("followupSaveBtn");
+    if (btn) btn.disabled = true;
+    pauseAutoRefresh(3000);
+    try {
+      await apiCreateFollowup({
+        eventId: followupModalEventId,
+        actionType: type,
+        note: note.trim() ? note.trim() : null,
+      });
+      closeFollowupModal();
+      await loadCalls({ silent: true, force: true });
+      showToast("Follow-up saved", "ok");
+      if (timelineEventId) openTimelineModal(timelineEventId);
+    } catch (e) {
+      showToast(e.message || "Failed to save follow-up", "bad");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  document.getElementById("timelineCloseBtn")?.addEventListener("click", closeTimelineModal);
+  document.getElementById("timelineOverlay")?.addEventListener("click", (e) => {
+    if (e.target && e.target.id === "timelineOverlay") closeTimelineModal();
+  });
+  document.getElementById("timelineAddFollowupBtn")?.addEventListener("click", () => {
+    if (!timelineEventId) return;
+    closeTimelineModal();
+    openFollowupModal(timelineEventId);
+  });
+  document.getElementById("sendBookingBtn")?.addEventListener("click", async () => {
+    if (!timelineEventId) return;
+    const statusEl = document.getElementById("bookingStatus");
+    const btn = document.getElementById("sendBookingBtn");
+    const apptDate = document.getElementById("apptDate")?.value || "";
+    const apptWindow = document.getElementById("apptWindow")?.value || "";
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = "Sending…";
+    pauseAutoRefresh(4000);
+    try {
+      const resp = await apiSendBookingConfirmation({
+        eventId: timelineEventId,
+        appointmentDate: apptDate.trim(),
+        appointmentWindow: apptWindow.trim(),
+      });
+      if (resp?.event) upsertEvent(resp.event);
+      if (statusEl) {
+        statusEl.textContent = resp?.ok ? "Sent (receipt stored in timeline)" : "Failed (see timeline)";
+      }
+      await loadCalls({ silent: true, force: true });
+      await openTimelineModal(timelineEventId);
+      showToast(resp?.ok ? "Booking email sent" : "Booking email failed", resp?.ok ? "ok" : "bad");
+    } catch (e) {
+      if (statusEl) statusEl.textContent = e?.message || "Failed to send";
+      showToast(e.message || "Failed to send booking email", "bad");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!document.getElementById("followupOverlay")?.hidden) closeFollowupModal();
+    if (!document.getElementById("timelineOverlay")?.hidden) closeTimelineModal();
   });
 
   const eventsRoot = $("#eventsRoot") || $("#rows");
@@ -778,6 +1172,47 @@ async function main() {
       return;
     }
 
+    const timelineBtn = e.target.closest(".js-timeline");
+    if (timelineBtn) {
+      const rowEl = timelineBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+      openTimelineModal(id);
+      return;
+    }
+
+    const addFollowupBtn = e.target.closest(".js-add-followup");
+    if (addFollowupBtn) {
+      const rowEl = addFollowupBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+      openFollowupModal(id);
+      return;
+    }
+
+    const setOwnerBtn = e.target.closest(".js-set-owner");
+    if (setOwnerBtn) {
+      e.preventDefault();
+      const rowEl = setOwnerBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+      const current = getEventById(id)?.owner ? String(getEventById(id).owner) : "";
+      const owner = prompt("Assign owner (name/initials):", current);
+      if (owner === null) return;
+      pauseAutoRefresh(2500);
+      try {
+        const resp = await apiSetOwner({ eventId: id, owner: owner.trim() ? owner.trim() : null });
+        if (resp?.event) upsertEvent(resp.event);
+        const filtered = applyDemoFilter(eventsCache);
+        renderRows(filtered);
+        setSummary(filtered);
+        showToast("Owner saved", "ok");
+      } catch (err) {
+        showToast(err.message || "Failed to set owner", "bad");
+      }
+      return;
+    }
+
     const deleteBtn = e.target.closest(".js-delete");
     if (deleteBtn) {
       const rowEl = deleteBtn.closest("[data-id]");
@@ -786,7 +1221,7 @@ async function main() {
 
       console.log("Delete clicked:", { id });
 
-      if (!confirm("Delete this call event?")) return;
+      if (!confirm("Delete this lead?")) return;
 
       pauseAutoRefresh(3000);
       mutationEpoch += 1;
@@ -800,7 +1235,18 @@ async function main() {
           setSummary(filtered);
         }
 
-        await deleteCall(id);
+        try {
+          await deleteCall(id);
+        } catch (err) {
+          const msg = String(err?.message || "");
+          if (msg.toLowerCase().includes("no result") || msg.toLowerCase().includes("unresolved")) {
+            const ok = confirm("This lead has no Result yet. Delete anyway?");
+            if (!ok) throw err;
+            await deleteCall(id, { confirmUnresolved: true });
+          } else {
+            throw err;
+          }
+        }
         mutatingIds.delete(String(id));
         showToast("Deleted", "ok");
         setLastFetch(new Date());
@@ -842,16 +1288,8 @@ async function main() {
       });
       setSummary(applyDemoFilter(eventsCache));
 
-      const updated = await setOutcome(id, outcome);
-      upsertEvent(updated);
-
-      // Make this useful for real ops: setting an outcome implies you followed up.
-      // Auto-mark "Followed up" when user sets a non-null outcome.
-      const afterOutcome = getEventById(id);
-      if (outcome && afterOutcome && !afterOutcome.followedUp) {
-        const fu = await followUp(id);
-        upsertEvent(fu);
-      }
+      const resp = await setResult(id, outcome);
+      if (resp?.event) upsertEvent(resp.event);
 
       mutatingIds.delete(String(id));
       editingOutcomeIds.delete(String(id));
@@ -861,7 +1299,7 @@ async function main() {
         setSummary(filtered);
       }
       showToast(
-        outcome ? "Outcome saved (marked followed up)" : "Outcome cleared",
+        outcome ? "Result saved" : "Result cleared",
         "ok"
       );
     } catch (err) {

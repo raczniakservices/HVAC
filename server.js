@@ -18,6 +18,19 @@ const DATABASE_PATH = process.env.DATABASE_PATH
   ? String(process.env.DATABASE_PATH)
   : "./data/calls.sqlite";
 
+// Email (Resend) + SLA
+const RESEND_API_KEY = process.env.RESEND_API_KEY ? String(process.env.RESEND_API_KEY) : "";
+const OWNER_ALERT_EMAIL = process.env.OWNER_ALERT_EMAIL ? String(process.env.OWNER_ALERT_EMAIL) : "";
+// For quick end-to-end plumbing tests, Resend supports using onboarding@resend.dev as the sender.
+// Production should set FROM_EMAIL to a verified domain sender (e.g. Leads <alerts@yourdomain.com>).
+const FROM_EMAIL = process.env.FROM_EMAIL
+  ? String(process.env.FROM_EMAIL)
+  : "onboarding@resend.dev";
+const COMPANY_NAME = process.env.COMPANY_NAME ? String(process.env.COMPANY_NAME) : "HVAC Service";
+const COMPANY_PHONE = process.env.COMPANY_PHONE ? String(process.env.COMPANY_PHONE) : "";
+const DASHBOARD_URL = process.env.DASHBOARD_URL ? String(process.env.DASHBOARD_URL) : "";
+const SLA_MINUTES = Number(process.env.SLA_MINUTES || 15);
+
 // Customer-ready default: demo simulator tooling is disabled unless explicitly enabled.
 const ENABLE_SIMULATOR =
   String(process.env.ENABLE_SIMULATOR || "").toLowerCase() === "true" ||
@@ -38,7 +51,8 @@ const TWILIO_VALIDATE_SIGNATURE =
   String(process.env.TWILIO_VALIDATE_SIGNATURE || "1") !== "0";
 
 // Lead-rescue automation (demo-safe defaults)
-const SLA_DEFAULT_MINUTES = Number(process.env.SLA_DEFAULT_MINUTES || 5);
+// Keep SLA aligned with Lead Truth Ledger unless explicitly overridden.
+const SLA_DEFAULT_MINUTES = Number(process.env.SLA_DEFAULT_MINUTES || process.env.SLA_MINUTES || 15);
 const ESCALATE_AFTER_MINUTES = Number(process.env.ESCALATE_AFTER_MINUTES || 10);
 // "log" (default): record what would happen without sending anything.
 // Future modes you can add: "email", "sms"
@@ -96,6 +110,61 @@ function migrateDb(db) {
   }
 }
 
+function getTableColumns(db, tableName) {
+  const t = String(tableName || "").trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) {
+    throw new Error("Invalid table name for PRAGMA");
+  }
+  const rows = db.prepare(`PRAGMA table_info(${t})`).all();
+  const cols = new Set();
+  for (const r of rows || []) {
+    if (r?.name) cols.add(String(r.name));
+  }
+  return cols;
+}
+
+function addColumnIfMissing(db, tableName, colName, colTypeSql) {
+  const t = String(tableName || "").trim();
+  const c = String(colName || "").trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) throw new Error("Invalid table name");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(c)) throw new Error("Invalid column name");
+  const cols = getTableColumns(db, t);
+  if (cols.has(c)) return false;
+  db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${colTypeSql}`);
+  return true;
+}
+
+function ensureLeadTruthLedgerSchema(db) {
+  // Add required columns to CallEvent if missing (safe for existing DBs).
+  // NOTE: existing schema uses createdAt/outcomeAt as ISO TEXT; new ledger fields use epoch ms INTEGER.
+  addColumnIfMissing(db, "CallEvent", "owner", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "handled_at", "INTEGER");
+  addColumnIfMissing(db, "CallEvent", "outcome_set_at", "INTEGER");
+  addColumnIfMissing(db, "CallEvent", "overdue_sent_count", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing(db, "CallEvent", "overdue_last_sent_at", "INTEGER");
+  addColumnIfMissing(db, "CallEvent", "customer_email", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "customer_name", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "appointment_date", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "appointment_window", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "customer_booking_email_sent_at", "INTEGER");
+
+  // Helpful indexes (safe).
+  db.exec("CREATE INDEX IF NOT EXISTS idx_CallEvent_outcome ON CallEvent (outcome)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_CallEvent_createdAt_text ON CallEvent (createdAt DESC)");
+
+  // Backfill: answered calls are handled immediately (freeze response time at 0s).
+  // Safe because we only set handled_at when it's NULL.
+  try {
+    db.exec(`
+      UPDATE CallEvent
+      SET handled_at = COALESCE(handled_at, CAST(strftime('%s', createdAt) AS INTEGER) * 1000)
+      WHERE status = 'answered' AND handled_at IS NULL AND createdAt IS NOT NULL;
+    `);
+  } catch {
+    // ignore backfill errors (keeps startup resilient)
+  }
+}
+
 function openDb() {
   ensureDir(path.dirname(resolvedDbPath));
   const db = new Database(resolvedDbPath);
@@ -104,10 +173,22 @@ function openDb() {
   db.pragma("synchronous = NORMAL");
   db.pragma("busy_timeout = 3000");
   migrateDb(db);
+  ensureLeadTruthLedgerSchema(db);
   return db;
 }
 
 const db = openDb();
+
+const { sendResendEmail } = require("./server/email.js");
+const {
+  internalInboundSubject,
+  internalOverdueSubject,
+  internalEmailHtml,
+  customerFormConfirmation,
+  customerBookingConfirmation,
+  formatDuration,
+  formatMinutes,
+} = require("./server/notify.js");
 
 function isValidCallerNumber(raw) {
   if (typeof raw !== "string") return false;
@@ -377,11 +458,15 @@ function rowToJson(row) {
   if (!row) return null;
   let responseSeconds = null;
   try {
-    if (row.followedUpAt) {
-      const created = new Date(row.createdAt).getTime();
-      const followed = new Date(row.followedUpAt).getTime();
-      if (Number.isFinite(created) && Number.isFinite(followed)) {
-        responseSeconds = Math.max(0, Math.floor((followed - created) / 1000));
+    const createdMs = new Date(row.createdAt).getTime();
+    // Lead Truth Ledger: response time is to first handling.
+    // Answered calls are treated as handled at creation (0s).
+    if (row.status === "answered") {
+      responseSeconds = 0;
+    } else if (typeof row.handled_at === "number") {
+      const handledMs = Number(row.handled_at);
+      if (Number.isFinite(createdMs) && Number.isFinite(handledMs)) {
+        responseSeconds = Math.max(0, Math.floor((handledMs - createdMs) / 1000));
       }
     }
   } catch {
@@ -409,6 +494,29 @@ function rowToJson(row) {
         ? row.dialCallDurationSec
         : row.dialCallDurationSec ?? null,
     assignedTo: row.assignedTo ?? null,
+    owner: row.owner ?? null,
+    handled_at:
+      typeof row.handled_at === "number" ? row.handled_at : row.handled_at ?? null,
+    outcome_set_at:
+      typeof row.outcome_set_at === "number" ? row.outcome_set_at : row.outcome_set_at ?? null,
+    overdue_sent_count:
+      typeof row.overdue_sent_count === "number"
+        ? row.overdue_sent_count
+        : row.overdue_sent_count ?? 0,
+    overdue_last_sent_at:
+      typeof row.overdue_last_sent_at === "number"
+        ? row.overdue_last_sent_at
+        : row.overdue_last_sent_at ?? null,
+    customer_email: row.customer_email ?? null,
+    customer_name: row.customer_name ?? null,
+    appointment_date: row.appointment_date ?? null,
+    appointment_window: row.appointment_window ?? null,
+    customer_booking_email_sent_at:
+      typeof row.customer_booking_email_sent_at === "number"
+        ? row.customer_booking_email_sent_at
+        : row.customer_booking_email_sent_at ?? null,
+    followup_count:
+      typeof row.followup_count === "number" ? row.followup_count : row.followup_count ?? 0,
     slaMinutes: typeof row.slaMinutes === "number" ? row.slaMinutes : row.slaMinutes ?? null,
     slaDueAt: row.slaDueAt ?? null,
     slaBreachedAt: row.slaBreachedAt ?? null,
@@ -566,6 +674,189 @@ function getCallEventByCallSid(callSid) {
   return db.prepare("SELECT * FROM CallEvent WHERE callSid = ?").get(callSid);
 }
 
+function getCallEventWithFollowupCountById(id) {
+  return db
+    .prepare(
+      `
+      SELECT
+        ce.*,
+        COALESCE(f.cnt, 0) AS followup_count
+      FROM CallEvent ce
+      LEFT JOIN (
+        SELECT event_id, COUNT(*) AS cnt
+        FROM followups
+        GROUP BY event_id
+      ) f ON f.event_id = ce.id
+      WHERE ce.id = ?
+    `.trim()
+    )
+    .get(id);
+}
+
+function listEventsWithFollowupCount(limit = 50) {
+  const rawLimit = Number(limit);
+  const lim = Number.isFinite(rawLimit) ? Math.max(1, Math.min(200, Math.floor(rawLimit))) : 50;
+  return db
+    .prepare(
+      `
+      SELECT
+        ce.*,
+        COALESCE(f.cnt, 0) AS followup_count
+      FROM CallEvent ce
+      LEFT JOIN (
+        SELECT event_id, COUNT(*) AS cnt
+        FROM followups
+        GROUP BY event_id
+      ) f ON f.event_id = ce.id
+      ORDER BY ce.createdAt DESC
+      LIMIT ?
+    `.trim()
+    )
+    .all(lim);
+}
+
+function parseCreatedAtMs(row) {
+  const ms = Date.parse(String(row?.createdAt || ""));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function getDashboardUrlForEvent(req, id) {
+  // Prefer explicit DASHBOARD_URL env. Fallback to current host /dashboard.
+  if (DASHBOARD_URL && String(DASHBOARD_URL).trim()) return String(DASHBOARD_URL).trim();
+  try {
+    const base = `${req.protocol}://${req.get("host")}`;
+    return `${base}/dashboard`;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeEmail(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  // Very light validation; Resend will enforce deliverability anyway.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return "";
+  return s;
+}
+
+function hasEmailLog({ eventId, emailType }) {
+  const row = db
+    .prepare(
+      "SELECT 1 FROM email_logs WHERE event_id IS ? AND email_type = ? ORDER BY id DESC LIMIT 1"
+    )
+    .get(eventId ?? null, String(emailType));
+  return !!row;
+}
+
+function insertEmailLog({
+  eventId,
+  emailType,
+  toEmail,
+  status,
+  providerMessageId,
+  errorText,
+}) {
+  const now = Date.now();
+  db.prepare(
+    `
+      INSERT INTO email_logs (
+        event_id, email_type, to_email, status, provider, provider_message_id, error_text, created_at
+      ) VALUES (?, ?, ?, ?, 'resend', ?, ?, ?)
+    `.trim()
+  ).run(
+    eventId ?? null,
+    String(emailType),
+    String(toEmail || ""),
+    String(status),
+    providerMessageId || null,
+    errorText || null,
+    now
+  );
+  return now;
+}
+
+async function sendAndLogEmail({ req, eventId, emailType, toEmail, subject, html, text }) {
+  const to = String(toEmail || "").trim();
+  try {
+    const result = await sendResendEmail({
+      apiKey: RESEND_API_KEY,
+      from: FROM_EMAIL,
+      to,
+      subject,
+      html,
+      text,
+    });
+    insertEmailLog({
+      eventId,
+      emailType,
+      toEmail: to,
+      status: "sent",
+      providerMessageId: result?.id || null,
+      errorText: null,
+    });
+    return { ok: true, provider_message_id: result?.id || null, dashboard_url: getDashboardUrlForEvent(req, eventId) };
+  } catch (e) {
+    insertEmailLog({
+      eventId,
+      emailType,
+      toEmail: to,
+      status: "failed",
+      providerMessageId: null,
+      errorText: String(e?.message || e || "Unknown error"),
+    });
+    return { ok: false, error: e?.message || "Email failed" };
+  }
+}
+
+async function maybeSendInternalInboundEmail({ req, eventId, allowNonFinalTwilioMissed } = {}) {
+  if (!OWNER_ALERT_EMAIL || !String(OWNER_ALERT_EMAIL).trim()) return;
+  if (hasEmailLog({ eventId, emailType: "internal_inbound" })) return;
+
+  const row = getCallEventById(eventId);
+  if (!row) return;
+
+  // Rule:
+  // - Missed Twilio call: send immediately once Twilio definitively classifies it as missed.
+  // - Answered Twilio call: may be delayed (we wait for completed to avoid premature classification).
+  // - Forms: send immediately.
+  const isForm = row.source === "landing_form";
+  const twilioFinalish = String(row.twilioStatus || "").toLowerCase().trim() === "completed";
+  if (!isForm && row.source === "twilio" && row.status !== "missed" && !twilioFinalish) return;
+  if (!isForm && row.source === "twilio" && row.status === "missed" && !twilioFinalish && !allowNonFinalTwilioMissed) {
+    return;
+  }
+
+  const subject = internalInboundSubject({
+    status: row.status,
+    callerNumber: row.callerNumber,
+    callDurationSec: typeof row.dialCallDurationSec === "number" ? row.dialCallDurationSec : row.callDurationSec,
+    source: row.source,
+    customerName: row.customer_name || null,
+  });
+
+  const lines = [
+    `Type: ${row.source || "unknown"}`,
+    `Status: ${row.status || "unknown"}`,
+    `Caller: ${row.callerNumber || "unknown"}`,
+    row.callSid ? `CallSid: ${row.callSid}` : null,
+  ].filter(Boolean);
+
+  const html = internalEmailHtml({
+    title: subject,
+    lines,
+    dashboardUrl: getDashboardUrlForEvent(req, eventId),
+  });
+
+  await sendAndLogEmail({
+    req,
+    eventId,
+    emailType: "internal_inbound",
+    toEmail: OWNER_ALERT_EMAIL,
+    subject,
+    html,
+  });
+}
+
 function getMostRecentCallEventForCaller(callerNumber) {
   const n = normalizeCallerNumber(callerNumber);
   if (!isValidCallerNumber(n)) return null;
@@ -689,6 +980,94 @@ function runAutomationPass() {
   return { ok: true, logged };
 }
 
+async function runOverdueEmailPass() {
+  // Lead Truth Ledger: overdue = handled_at is NULL and age > SLA_MINUTES.
+  // Send at most 2 emails per lead (first at SLA, second at 60m).
+  if (!OWNER_ALERT_EMAIL || !String(OWNER_ALERT_EMAIL).trim()) return { ok: true, sent: 0, skipped: "no_owner_email" };
+  if (!RESEND_API_KEY || !String(RESEND_API_KEY).trim()) return { ok: true, sent: 0, skipped: "no_resend_key" };
+  if (!FROM_EMAIL || !String(FROM_EMAIL).trim()) return { ok: true, sent: 0, skipped: "no_from_email" };
+
+  const nowMs = Date.now();
+  const slaMin = Number.isFinite(SLA_MINUTES) ? Math.max(1, Math.floor(SLA_MINUTES)) : 15;
+  const slaMs = slaMin * 60_000;
+  const secondMs = 60 * 60_000;
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        id,
+        createdAt,
+        callerNumber,
+        source,
+        status,
+        outcome,
+        handled_at,
+        overdue_sent_count,
+        overdue_last_sent_at
+      FROM CallEvent
+      WHERE (outcome IS NULL OR TRIM(outcome) = '')
+        AND handled_at IS NULL
+      ORDER BY createdAt ASC
+      LIMIT 200
+    `.trim()
+    )
+    .all();
+
+  let sent = 0;
+  for (const r of rows || []) {
+    const createdMs = Date.parse(String(r.createdAt || ""));
+    if (!Number.isFinite(createdMs)) continue;
+    const ageMs = nowMs - createdMs;
+    if (ageMs <= slaMs) continue;
+
+    const count = Number(r.overdue_sent_count || 0);
+    const last = typeof r.overdue_last_sent_at === "number" ? r.overdue_last_sent_at : null;
+    const tooSoon = Number.isFinite(last) && nowMs - last < 5 * 60_000;
+    if (tooSoon) continue;
+
+    const shouldSend =
+      (count <= 0 && ageMs > slaMs) ||
+      (count === 1 && ageMs > secondMs);
+    if (!shouldSend) continue;
+    if (count >= 2) continue;
+
+    // Mark before sending so we don't spam on repeated failures.
+    db.prepare(
+      "UPDATE CallEvent SET overdue_sent_count = COALESCE(overdue_sent_count, 0) + 1, overdue_last_sent_at = ? WHERE id = ?"
+    ).run(nowMs, r.id);
+
+    const minsOver = formatMinutes(ageMs);
+    const subject = internalOverdueSubject({ minutesOver: minsOver, callerNumber: r.callerNumber });
+    const html = internalEmailHtml({
+      title: subject,
+      lines: [
+        `Open for: ${minsOver != null ? `${minsOver} minutes` : "—"}`,
+        `Type: ${r.source || "unknown"}`,
+        `Caller: ${r.callerNumber || "unknown"}`,
+        `Status: ${r.status || "unknown"}`,
+      ],
+      dashboardUrl: DASHBOARD_URL,
+    });
+
+    // Use req-less send; receipt still logged.
+    // We pass a fake minimal req for dashboard link fallback.
+    // eslint-disable-next-line no-unused-vars
+    const fakeReq = { protocol: "https", get: () => "", headers: {} };
+    await sendAndLogEmail({
+      req: fakeReq,
+      eventId: r.id,
+      emailType: "internal_overdue",
+      toEmail: OWNER_ALERT_EMAIL,
+      subject,
+      html,
+    });
+    sent += 1;
+  }
+
+  return { ok: true, sent };
+}
+
 function upsertTwilioEvent({
   callSid,
   from,
@@ -709,6 +1088,11 @@ function upsertTwilioEvent({
     dialCallDurationSec,
   });
   const twilioStatus = String(dialCallStatus || callStatus || "").trim();
+  const createdMsNow = (() => {
+    const ms = Date.parse(now);
+    return Number.isFinite(ms) ? ms : Date.now();
+  })();
+  const handledAtMsNewRow = status === "answered" ? createdMsNow : null;
 
   if (callSid && isValidCallSid(callSid)) {
     const existing = db
@@ -716,8 +1100,13 @@ function upsertTwilioEvent({
       .get(callSid);
 
     if (existing) {
+      const existingCreatedMs = (() => {
+        const ms = Date.parse(String(existing.createdAt || ""));
+        return Number.isFinite(ms) ? ms : null;
+      })();
+      const handledAtMsExistingRow = status === "answered" ? existingCreatedMs : null;
       db.prepare(
-        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction), callDurationSec = COALESCE(?, callDurationSec), dialCallDurationSec = COALESCE(?, dialCallDurationSec) WHERE callSid = ?"
+        "UPDATE CallEvent SET callerNumber = COALESCE(?, callerNumber), status = ?, source = 'twilio', toNumber = COALESCE(?, toNumber), twilioStatus = COALESCE(?, twilioStatus), direction = COALESCE(?, direction), callDurationSec = COALESCE(?, callDurationSec), dialCallDurationSec = COALESCE(?, dialCallDurationSec), handled_at = CASE WHEN handled_at IS NULL AND ? IS NOT NULL THEN ? ELSE handled_at END WHERE callSid = ?"
       ).run(
         callerNumber || null,
         status,
@@ -726,17 +1115,19 @@ function upsertTwilioEvent({
         direction || null,
         callDurationSec ?? null,
         dialCallDurationSec ?? null,
+        handledAtMsExistingRow,
+        handledAtMsExistingRow,
         callSid
       );
       try {
         const updated = getCallEventByCallSid(callSid);
         if (updated?.id) ensureSlaDefaultsForEventId(updated.id);
-      } catch {}
+      } catch { }
       return;
     }
 
     db.prepare(
-      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, callSid, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec, handled_at) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?, ?)"
     ).run(
       now,
       callerNumber || "+10000000000",
@@ -746,7 +1137,8 @@ function upsertTwilioEvent({
       twilioStatus || null,
       direction || null,
       callDurationSec ?? null,
-      dialCallDurationSec ?? null
+      dialCallDurationSec ?? null,
+      handledAtMsNewRow
     );
     try {
       const inserted = getCallEventByCallSid(callSid);
@@ -759,13 +1151,13 @@ function upsertTwilioEvent({
           payload: { source: "twilio", status },
         });
       }
-    } catch {}
+    } catch { }
     return;
   }
 
   // Fallback if CallSid missing/invalid: insert as a best-effort event.
   db.prepare(
-    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?)"
+    "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, toNumber, twilioStatus, direction, callDurationSec, dialCallDurationSec, handled_at) VALUES (?, ?, ?, 'twilio', 0, ?, ?, ?, ?, ?, ?)"
   ).run(
     now,
     callerNumber || "+10000000000",
@@ -774,7 +1166,8 @@ function upsertTwilioEvent({
     twilioStatus || null,
     direction || null,
     callDurationSec ?? null,
-    dialCallDurationSec ?? null
+    dialCallDurationSec ?? null,
+    handledAtMsNewRow
   );
 }
 
@@ -1093,6 +1486,31 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
     console.warn("Twilio status webhook DB write failed:", e);
   }
 
+  // Internal inbound email timing (hardened):
+  // - If Twilio definitively classifies the call as MISSED, send immediately (exactly once).
+  // - Answered call alerts are allowed to be delayed; we wait for completed to avoid early misclassification.
+  try {
+    const cs = String(callStatus || "").toLowerCase().trim();
+    const dcs = String(dialCallStatus || "").toLowerCase().trim();
+    const missedDefinitiveStatuses = new Set(["busy", "no-answer", "failed", "canceled"]);
+    const definitiveMissedSignal = missedDefinitiveStatuses.has(dcs) || cs === "completed";
+
+    if (callSid && isValidCallSid(callSid)) {
+      const row = getCallEventByCallSid(callSid);
+      if (row?.id) {
+        if (row.source === "twilio" && row.status === "missed" && definitiveMissedSignal) {
+          maybeSendInternalInboundEmail({
+            req,
+            eventId: row.id,
+            allowNonFinalTwilioMissed: true,
+          }).catch(() => { });
+        } else if (row.source === "twilio" && row.status === "answered" && (cs === "completed" || dcs === "completed")) {
+          maybeSendInternalInboundEmail({ req, eventId: row.id }).catch(() => { });
+        }
+      }
+    }
+  } catch { }
+
   // Missed-call text-back: send only on final status ("completed") and only once.
   try {
     const cs = String(callStatus || "").toLowerCase().trim();
@@ -1120,7 +1538,7 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
                   smsSid: msg?.sid || null,
                   smsBody,
                 });
-              } catch {}
+              } catch { }
             })
             .catch((e) => {
               // eslint-disable-next-line no-console
@@ -1136,7 +1554,7 @@ app.post("/twilio/status", requireTwilioAuth, (req, res) => {
         }
       }
     }
-  } catch {}
+  } catch { }
 
   return res.status(204).end();
 });
@@ -1180,7 +1598,7 @@ app.post("/twilio/sms", requireTwilioAuth, (req, res) => {
                     placedAtIso: new Date().toISOString(),
                     callSid: call?.sid || null,
                   });
-                } catch {}
+                } catch { }
               })
               .catch((e) => {
                 // eslint-disable-next-line no-console
@@ -1271,7 +1689,7 @@ app.post("/api/webhooks/call", requireDemoAuth, requireSimulatorEnabled, (req, r
       dedupeKey: `lead_created:${insert.lastInsertRowid}`,
       payload: { source, status },
     });
-  } catch {}
+  } catch { }
 
   const row = db
     .prepare("SELECT * FROM CallEvent WHERE id = ?")
@@ -1301,12 +1719,14 @@ app.post("/api/landing/form", (req, res) => {
 
   const createdAt = new Date().toISOString();
   const firstName = clampStr(req.body?.firstName, 60);
+  const email = normalizeEmail(req.body?.email);
   const cityOrZip = clampStr(req.body?.cityOrZip, 80);
   const issue = clampStr(req.body?.issue, 80);
   const timeframe = clampStr(req.body?.timeframe, 80);
 
   const noteParts = [];
   if (firstName) noteParts.push(`First: ${firstName}`);
+  if (email) noteParts.push(`Email: ${email}`);
   if (cityOrZip) noteParts.push(`City/ZIP: ${cityOrZip}`);
   if (issue) noteParts.push(`Issue: ${issue}`);
   if (timeframe) noteParts.push(`Timeframe: ${timeframe}`);
@@ -1314,9 +1734,9 @@ app.post("/api/landing/form", (req, res) => {
 
   const insert = db
     .prepare(
-      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, note) VALUES (?, ?, 'missed', 'landing_form', 0, ?)"
+      "INSERT INTO CallEvent (createdAt, callerNumber, status, source, followedUp, note, customer_email, customer_name) VALUES (?, ?, 'missed', 'landing_form', 0, ?, ?, ?)"
     )
-    .run(createdAt, phoneRaw, note || null);
+    .run(createdAt, phoneRaw, note || null, email || null, firstName || null);
 
   try {
     ensureSlaDefaultsForEventId(insert.lastInsertRowid);
@@ -1326,11 +1746,27 @@ app.post("/api/landing/form", (req, res) => {
       dedupeKey: `lead_created:${insert.lastInsertRowid}`,
       payload: { source: "landing_form", status: "missed" },
     });
-  } catch {}
+  } catch { }
 
   const row = db
     .prepare("SELECT * FROM CallEvent WHERE id = ?")
     .get(insert.lastInsertRowid);
+
+  // Internal alert email for every form submission.
+  maybeSendInternalInboundEmail({ req, eventId: insert.lastInsertRowid }).catch(() => { });
+
+  // Customer confirmation email (auto) if customer_email was provided.
+  if (email) {
+    const tpl = customerFormConfirmation({ companyName: COMPANY_NAME, companyPhone: COMPANY_PHONE });
+    sendAndLogEmail({
+      req,
+      eventId: insert.lastInsertRowid,
+      emailType: "customer_form_confirmation",
+      toEmail: email,
+      subject: tpl.subject,
+      html: tpl.html,
+    }).catch(() => { });
+  }
 
   return res.json(rowToJson(row));
 });
@@ -1338,15 +1774,260 @@ app.post("/api/landing/form", (req, res) => {
 // API: list recent calls
 app.get("/api/calls", requireDemoAuth, (req, res) => {
   const rawLimit = req.query?.limit ? Number(req.query.limit) : 50;
-  const limit = Number.isFinite(rawLimit)
-    ? Math.max(1, Math.min(200, Math.floor(rawLimit)))
-    : 50;
-
-  const rows = db
-    .prepare("SELECT * FROM CallEvent ORDER BY createdAt DESC LIMIT ?")
-    .all(limit);
-
+  const rows = listEventsWithFollowupCount(rawLimit);
   return res.json(rows.map(rowToJson));
+});
+
+// API: list recent events (Lead Truth Ledger)
+app.get("/api/events", requireDemoAuth, (req, res) => {
+  const rawLimit = req.query?.limit ? Number(req.query.limit) : 50;
+  const rows = listEventsWithFollowupCount(rawLimit);
+  return res.json(rows.map(rowToJson));
+});
+
+// API: followups list
+app.get("/api/followups", requireDemoAuth, (req, res) => {
+  const eventId = Number(req.query?.event_id);
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+  const rows = db
+    .prepare("SELECT * FROM followups WHERE event_id = ? ORDER BY created_at ASC")
+    .all(eventId);
+  return res.json(
+    rows.map((r) => ({
+      id: r.id,
+      event_id: r.event_id,
+      action_type: r.action_type,
+      note: r.note ?? null,
+      created_at: r.created_at,
+    }))
+  );
+});
+
+function isValidFollowupType(t) {
+  return (
+    t === "call_attempt" ||
+    t === "voicemail_left" ||
+    t === "text_sent" ||
+    t === "spoke_to_customer" ||
+    t === "note"
+  );
+}
+
+function followupSetsHandledAt(actionType) {
+  const t = String(actionType || "").trim();
+  return t === "call_attempt" || t === "voicemail_left" || t === "text_sent" || t === "spoke_to_customer";
+}
+
+// API: create followup
+app.post("/api/followups", requireDemoAuth, (req, res) => {
+  const eventId = Number(req.body?.event_id);
+  const actionType = req.body?.action_type ? String(req.body.action_type).trim() : "";
+  const note = clampStr(req.body?.note, 800) || null;
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+  if (!isValidFollowupType(actionType)) {
+    return res.status(400).json({
+      error: "Invalid action_type",
+      message: "action_type must be one of: call_attempt, voicemail_left, text_sent, spoke_to_customer, note",
+    });
+  }
+
+  const now = Date.now();
+  const row = getCallEventById(eventId);
+  if (!row) return res.status(404).json({ error: "Not found" });
+
+  db.exec("BEGIN");
+  try {
+    // Double-click dedupe: if last followup was < 10s ago, reject (server-side guard).
+    const last = db
+      .prepare("SELECT created_at FROM followups WHERE event_id = ? ORDER BY created_at DESC LIMIT 1")
+      .get(eventId);
+    const lastMs = last && typeof last.created_at === "number" ? last.created_at : null;
+    if (Number.isFinite(lastMs) && now - lastMs < 10_000) {
+      db.exec("ROLLBACK");
+      return res.status(409).json({
+        error: "Duplicate follow-up prevented",
+        message: "A follow-up was already recorded moments ago. Please wait a few seconds and try again.",
+      });
+    }
+
+    const ins = db
+      .prepare("INSERT INTO followups (event_id, action_type, note, created_at) VALUES (?, ?, ?, ?)")
+      .run(eventId, actionType, note, now);
+
+    if (!row.handled_at && followupSetsHandledAt(actionType)) {
+      db.prepare("UPDATE CallEvent SET handled_at = ? WHERE id = ? AND handled_at IS NULL").run(
+        now,
+        eventId
+      );
+    }
+
+    db.exec("COMMIT");
+
+    const countRow = db
+      .prepare("SELECT COUNT(*) AS cnt FROM followups WHERE event_id = ?")
+      .get(eventId);
+
+    return res.json({
+      ok: true,
+      followup: {
+        id: ins.lastInsertRowid,
+        event_id: eventId,
+        action_type: actionType,
+        note,
+        created_at: now,
+      },
+      followup_count: Number(countRow?.cnt || 0),
+    });
+  } catch (e) {
+    db.exec("ROLLBACK");
+    return res.status(500).json({ error: "Failed to create followup", message: e?.message || "Unknown error" });
+  }
+});
+
+// API: set owner (new canonical field)
+app.post("/api/owner", requireDemoAuth, (req, res) => {
+  const eventId = Number(req.body?.event_id);
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+  const ownerRaw = req.body?.owner;
+  const owner = ownerRaw === null ? null : clampStr(ownerRaw, 80) || null;
+
+  const result = db.prepare("UPDATE CallEvent SET owner = ? WHERE id = ?").run(owner, eventId);
+  if (result.changes === 0) return res.status(404).json({ error: "Not found" });
+  return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });
+});
+
+// API: set result/outcome (ledger-stamped)
+app.post("/api/result", requireDemoAuth, (req, res) => {
+  const eventId = Number(req.body?.event_id);
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+  const outcome = normalizeOutcome(req.body?.result);
+  if (typeof outcome === "undefined") {
+    return res.status(400).json({ error: "Invalid result", message: "Body must include { event_id, result }" });
+  }
+  if (outcome !== null && !isValidOutcome(outcome)) {
+    return res.status(400).json({ error: "Invalid result", message: "result is not an allowed outcome" });
+  }
+
+  const row = getCallEventById(eventId);
+  if (!row) return res.status(404).json({ error: "Not found" });
+
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const createdMs = parseCreatedAtMs(row);
+
+  // Answered call handling: ensure handled_at is set to created time (0s response) if missing.
+  const shouldSetHandledAtForAnswered = row.status === "answered" && !row.handled_at && Number.isFinite(createdMs);
+
+  if (outcome === null) {
+    db.prepare(
+      "UPDATE CallEvent SET outcome = NULL, outcomeAt = NULL, outcome_set_at = NULL WHERE id = ?"
+    ).run(eventId);
+  } else {
+    db.prepare(
+      "UPDATE CallEvent SET outcome = ?, outcomeAt = ?, outcome_set_at = ? WHERE id = ?"
+    ).run(outcome, nowIso, nowMs, eventId);
+  }
+
+  if (shouldSetHandledAtForAnswered) {
+    db.prepare("UPDATE CallEvent SET handled_at = COALESCE(handled_at, ?) WHERE id = ?").run(
+      createdMs,
+      eventId
+    );
+  }
+
+  return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });
+});
+
+// API: email logs for timeline
+app.get("/api/email_logs", requireDemoAuth, (req, res) => {
+  const eventId = req.query?.event_id ? Number(req.query.event_id) : null;
+  const rows = eventId
+    ? db
+      .prepare("SELECT * FROM email_logs WHERE event_id = ? ORDER BY created_at ASC")
+      .all(eventId)
+    : db.prepare("SELECT * FROM email_logs ORDER BY created_at DESC LIMIT 100").all();
+  return res.json(
+    rows.map((r) => ({
+      id: r.id,
+      event_id: r.event_id ?? null,
+      email_type: r.email_type,
+      to_email: r.to_email,
+      status: r.status,
+      provider: r.provider,
+      provider_message_id: r.provider_message_id ?? null,
+      error_text: r.error_text ?? null,
+      created_at: r.created_at,
+    }))
+  );
+});
+
+// API: send booking confirmation (manual)
+app.post("/api/send_booking_confirmation", requireDemoAuth, async (req, res) => {
+  const eventId = Number(req.body?.event_id);
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+
+  const row = getCallEventById(eventId);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  if (String(row.outcome || "") !== "booked") {
+    return res.status(400).json({ error: "Not booked", message: "Lead must be Booked to send booking confirmation." });
+  }
+
+  const toEmail = normalizeEmail(row.customer_email);
+  if (!toEmail) {
+    return res.status(400).json({ error: "Missing customer_email", message: "customer_email is required for booking confirmation." });
+  }
+
+  const apptDate = clampStr(req.body?.appointment_date, 60) || null;
+  const apptWindow = clampStr(req.body?.appointment_window, 80) || null;
+  db.prepare(
+    "UPDATE CallEvent SET appointment_date = COALESCE(?, appointment_date), appointment_window = COALESCE(?, appointment_window) WHERE id = ?"
+  ).run(apptDate, apptWindow, eventId);
+
+  const tpl = customerBookingConfirmation({
+    companyName: COMPANY_NAME,
+    companyPhone: COMPANY_PHONE,
+    appointmentDate: apptDate || row.appointment_date,
+    appointmentWindow: apptWindow || row.appointment_window,
+  });
+
+  const result = await sendAndLogEmail({
+    req,
+    eventId,
+    emailType: "customer_booking_confirmation",
+    toEmail,
+    subject: tpl.subject,
+    html: tpl.html,
+  });
+
+  if (result.ok) {
+    db.prepare(
+      "UPDATE CallEvent SET customer_booking_email_sent_at = COALESCE(customer_booking_email_sent_at, ?) WHERE id = ?"
+    ).run(Date.now(), eventId);
+  }
+
+  return res.json({ ok: result.ok, event: rowToJson(getCallEventWithFollowupCountById(eventId)), receipt: result });
+});
+
+// API: test email (logs receipt)
+app.post("/api/test_email", requireDemoAuth, async (req, res) => {
+  if (!OWNER_ALERT_EMAIL || !String(OWNER_ALERT_EMAIL).trim()) {
+    return res.status(400).json({ error: "OWNER_ALERT_EMAIL not set" });
+  }
+  const subject = "Lead Truth Ledger test email";
+  const html = internalEmailHtml({
+    title: subject,
+    lines: ["This is a test email from the HVAC Lead Truth Ledger."],
+    dashboardUrl: DASHBOARD_URL,
+  });
+  const result = await sendAndLogEmail({
+    req,
+    eventId: null,
+    emailType: "test",
+    toEmail: OWNER_ALERT_EMAIL,
+    subject,
+    html,
+  });
+  return res.json({ ok: result.ok, receipt: result });
 });
 
 // API: assign owner
@@ -1489,13 +2170,69 @@ app.delete("/api/calls/:id", requireDemoAuth, (req, res) => {
     return res.status(400).json({ error: "Invalid id" });
   }
 
+  const row = getCallEventById(id);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  const confirmUnresolved = String(req.query?.confirm_unresolved || "").trim() === "true";
+  const unresolved = !row.outcome;
+  if (unresolved && !confirmUnresolved) {
+    return res.status(400).json({
+      error: "Unresolved lead",
+      message: "This lead has no Result. Pass ?confirm_unresolved=true to delete anyway.",
+    });
+  }
+
   const result = db.prepare("DELETE FROM CallEvent WHERE id = ?").run(id);
   if (result.changes === 0) return res.status(404).json({ error: "Not found" });
   return res.json({ ok: true });
 });
 
+// API: delete single event (alias)
+app.delete("/api/events/:id", requireDemoAuth, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+  const row = getCallEventById(id);
+  if (!row) return res.status(404).json({ error: "Not found" });
+  const confirmUnresolved = String(req.query?.confirm_unresolved || "").trim() === "true";
+  if (!row.outcome && !confirmUnresolved) {
+    return res.status(400).json({
+      error: "Unresolved lead",
+      message: "This lead has no Result. Pass ?confirm_unresolved=true to delete anyway.",
+    });
+  }
+  db.prepare("DELETE FROM CallEvent WHERE id = ?").run(id);
+  return res.json({ ok: true });
+});
+
 // API: clear all call events (demo cleanup)
 app.post("/api/calls/clear", requireDemoAuth, (req, res) => {
+  const confirmUnresolved = String(req.query?.confirm_unresolved || "").trim() === "true";
+  const unresolvedCount = db
+    .prepare("SELECT COUNT(*) AS cnt FROM CallEvent WHERE outcome IS NULL OR TRIM(outcome) = ''")
+    .get()?.cnt;
+  if (!confirmUnresolved && Number(unresolvedCount || 0) > 0) {
+    return res.status(400).json({
+      error: "Unresolved leads exist",
+      message: "Pass ?confirm_unresolved=true to clear anyway.",
+      unresolved_count: Number(unresolvedCount || 0),
+    });
+  }
+  db.exec("DELETE FROM CallEvent");
+  return res.json({ ok: true });
+});
+
+// API: clear all events (alias)
+app.post("/api/clear_all", requireDemoAuth, (req, res) => {
+  const confirmUnresolved = String(req.query?.confirm_unresolved || "").trim() === "true";
+  const unresolvedCount = db
+    .prepare("SELECT COUNT(*) AS cnt FROM CallEvent WHERE outcome IS NULL OR TRIM(outcome) = ''")
+    .get()?.cnt;
+  if (!confirmUnresolved && Number(unresolvedCount || 0) > 0) {
+    return res.status(400).json({
+      error: "Unresolved leads exist",
+      message: "Pass ?confirm_unresolved=true to clear anyway.",
+      unresolved_count: Number(unresolvedCount || 0),
+    });
+  }
   db.exec("DELETE FROM CallEvent");
   return res.json({ ok: true });
 });
@@ -1515,6 +2252,11 @@ app.listen(PORT, () => {
       "⚠️  TWILIO_AUTH_TOKEN is not set. /twilio/* webhooks will NOT be signature-verified."
     );
   }
+
+  // Overdue escalation emails (Lead Truth Ledger)
+  setInterval(() => {
+    runOverdueEmailPass().catch(() => { });
+  }, 60_000);
 });
 
 
