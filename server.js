@@ -4,10 +4,16 @@ const crypto = require("crypto");
 const express = require("express");
 const Database = require("better-sqlite3");
 
-// Load .env if present
+// Load local env if present (Cursor environment blocks editing .env sometimes)
 try {
   // eslint-disable-next-line global-require
-  require("dotenv").config({ path: path.join(__dirname, ".env") });
+  const localEnv = path.join(__dirname, "local.env");
+  const dotEnv = path.join(__dirname, ".env");
+  if (fs.existsSync(localEnv)) {
+    require("dotenv").config({ path: localEnv });
+  } else {
+    require("dotenv").config({ path: dotEnv });
+  }
 } catch {
   // ignore
 }
@@ -30,6 +36,22 @@ const COMPANY_NAME = process.env.COMPANY_NAME ? String(process.env.COMPANY_NAME)
 const COMPANY_PHONE = process.env.COMPANY_PHONE ? String(process.env.COMPANY_PHONE) : "";
 const DASHBOARD_URL = process.env.DASHBOARD_URL ? String(process.env.DASHBOARD_URL) : "";
 const SLA_MINUTES = Number(process.env.SLA_MINUTES || 15);
+const OWNER_OPTIONS = process.env.OWNER_OPTIONS ? String(process.env.OWNER_OPTIONS) : "";
+const DEFAULT_OWNER_OPTIONS = ["Cody", "Sam", "Alex"];
+
+function parseOwnerOptions(raw) {
+  const s = String(raw || "");
+  const parts = s
+    .split(",")
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(parts));
+}
+
+const OWNER_OPTIONS_LIST = (() => {
+  const parsed = parseOwnerOptions(OWNER_OPTIONS);
+  return parsed.length ? parsed : DEFAULT_OWNER_OPTIONS;
+})();
 
 // Customer-ready default: demo simulator tooling is disabled unless explicitly enabled.
 const ENABLE_SIMULATOR =
@@ -1801,6 +1823,13 @@ app.get("/api/events", requireDemoAuth, (req, res) => {
   const rawLimit = req.query?.limit ? Number(req.query.limit) : 50;
   const rows = listEventsWithFollowupCount(rawLimit);
   return res.json(rows.map(rowToJson));
+});
+
+// API: dashboard config (operator UX)
+app.get("/api/config", requireDemoAuth, (_req, res) => {
+  return res.json({
+    ownerOptions: OWNER_OPTIONS_LIST,
+  });
 });
 
 // API: followups list

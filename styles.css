@@ -493,16 +493,16 @@ button:active,a.btn:active{transform:translateY(0)}
    Landing masthead (landing only — keeps dashboard topbar normal size)
 ====================================================== */
 .landing-page .topbar__inner{
-  height:72px;
-  padding:10px 0;
+  height:64px;
+  padding:6px 0;
 }
-/* Keep the logo fully inside the header (prevents the "white box" overflow on mobile). */
-.landing-page .brand__mark{ height:48px !important; }
+/* Keep the logo size stable even if header height changes. */
+.landing-page .brand__mark{ height:48px; }
 .landing-page .brand{ align-items:center; }
 @media (max-width: 720px){
-  .landing-page .topbar__inner{height:68px; padding:8px 0;}
+  .landing-page .topbar__inner{height:56px; padding:4px 0;}
   .landing-page .brand{gap:12px}
-  .landing-page .brand__mark{height:40px !important}
+  .landing-page .brand__mark{height:40px}
   .landing-page .brand__name{display:none}
   .landing-page .call-cta{ padding:0 14px; gap:8px; }
 }
@@ -2075,11 +2075,12 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 /* Dashboard table column sizing (10 columns) */
 .dashboard-page .table thead th:nth-child(1) { width: 92px; }  /* Time */
-.dashboard-page .table thead th:nth-child(3) { width: 110px; } /* Open */
-.dashboard-page .table thead th:nth-child(4) { width: 56px; }  /* SLA */
+.dashboard-page .table thead th:nth-child(2) { width: 260px; } /* Caller */
+.dashboard-page .table thead th:nth-child(3) { width: 140px; } /* Open */
+.dashboard-page .table thead th:nth-child(4) { width: 132px; }  /* SLA / Response */
 .dashboard-page .table thead th:nth-child(5) { width: 96px; }  /* Call length */
 .dashboard-page .table thead th:nth-child(6) { width: 160px; } /* Type */
-.dashboard-page .table thead th:nth-child(7) { width: 86px; }  /* Owner */
+.dashboard-page .table thead th:nth-child(7) { width: 140px; }  /* Owner */
 .dashboard-page .table thead th:nth-child(8) { width: 170px; } /* Next step */
 .dashboard-page .table thead th:nth-child(9) { width: 220px; } /* Result */
 .dashboard-page .table thead th:nth-child(10) { width: 66px; } /* Actions */
@@ -2088,8 +2089,12 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   border-bottom:1px solid rgba(226,232,240,.7);
   font-size:12.5px;
   vertical-align:top;
-  word-break:break-word;
   overflow:hidden;
+}
+.dashboard-page .table tbody td{
+  /* Prevent "vertical letter stacking" in narrow fixed-layout columns. */
+  word-break:normal;
+  overflow-wrap:normal;
 }
 .table tbody td:nth-child(9),
 .table tbody td:nth-child(10){
@@ -2104,6 +2109,17 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   padding:8px 10px;
   font-size:12.5px;
   background:#fff;
+}
+
+.owner-select{
+  width:100%;
+  max-width:100%;
+  border-radius:12px;
+  border:1px solid rgba(15,23,42,.12);
+  padding:8px 10px;
+  font-size:12.5px;
+  background:#fff;
+  height:38px;
 }
 
 .pill--mini{
@@ -2125,6 +2141,26 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   white-space:nowrap;
   word-break:normal;
   overflow-wrap:normal;
+}
+.dashboard-page .open-cell{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.dashboard-page .open-cell .pill{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.dashboard-page .sla-cell{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.dashboard-page .sla-cell .sla{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .table tbody td:nth-child(3),
 .table tbody td:nth-child(4),
@@ -2175,18 +2211,21 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size:12px;
   white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  display:block;
 }
 .caller-cell__details{
   margin-top:4px;
   font-size:11px;
   line-height:1.25;
   white-space:normal;
+  overflow-wrap:anywhere;
 }
 
 /* If the viewport is tight, hide less-critical columns to keep everything on one screen */
 @media (max-width: 980px){
-  .table thead th:nth-child(4),
-  .table tbody td:nth-child(4),
+  /* Keep SLA/Response visible (truth + operational clarity). Hide Type instead. */
   .table thead th:nth-child(6),
   .table tbody td:nth-child(6){
     display:none;

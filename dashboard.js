@@ -177,6 +177,8 @@ let mutationEpoch = 0;
 const mutatingIds = new Set();
 let isInteracting = false;
 const editingOutcomeIds = new Set();
+let ownerOptions = null;
+const DEFAULT_OWNER_OPTIONS = ["Cody", "Sam", "Alex"];
 
 // Follow-up UI intentionally removed.
 let followupModalEventId = null;
@@ -315,6 +317,22 @@ async function fetchCalls() {
   }
 
   if (!res.ok) throw new Error(json.message || "Failed to load calls");
+  return json;
+}
+
+async function fetchDashboardConfig() {
+  const key = getKey();
+  const res = await fetch(withKey("/api/config"), {
+    headers: { ...(key ? { "x-demo-key": key } : {}) },
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to load config");
   return json;
 }
 
@@ -497,9 +515,10 @@ function setSummary(events) {
   };
 
   // Lead Truth Ledger
-  // Unhandled = needs first real attempt (handled_at is null) AND no outcome.
-  const missed = events.filter((e) => !e?.outcome && (e?.handled_at === null || typeof e?.handled_at === "undefined")).length;
-  const followedUp = events.filter((e) => typeof e?.handled_at === "number").length;
+  // Unhandled = no outcome AND no first action yet (owner/next step/result).
+  const unhandled = events.filter((e) => !e?.outcome && !(e?.first_action_at && String(e.first_action_at).trim())).length;
+  // Followed up (aka "in progress") = no outcome AND has first action.
+  const followedUp = events.filter((e) => !e?.outcome && (e?.first_action_at && String(e.first_action_at).trim())).length;
   const booked = events.filter((e) => e.outcome === "booked").length;
   const lost = events.filter((e) => {
     if (e.outcome === "already_hired" || e.outcome === "wrong_number") return true;
@@ -507,7 +526,7 @@ function setSummary(events) {
     return false;
   }).length;
 
-  set("sumMissed", missed);
+  set("sumMissed", unhandled);
   set("sumFollowedUp", followedUp);
   set("sumBooked", booked);
   set("sumLost", lost);
@@ -550,26 +569,72 @@ function getLeadState(ev) {
   const hasOutcome = !!(ev?.outcome && String(ev.outcome).trim());
   if (hasOutcome) return { state: "closed", label: "Closed", cls: "pill pill--ok" };
 
-  const isOverdue = !!ev?.overdue;
-  const label = ev?.open_label ? String(ev.open_label) : isOverdue ? "Overdue" : "Open";
-  return {
-    state: isOverdue ? "overdue" : "open",
-    label,
-    cls: isOverdue ? "pill pill--danger" : "pill pill--warn",
-    overdue: isOverdue,
-  };
+  const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
+  const isOverdue = !hasFirstAction && !!ev?.overdue;
+
+  if (isOverdue) {
+    const mins = Number.isFinite(Number(ev?.overdue_minutes)) ? Math.max(0, Math.floor(Number(ev.overdue_minutes))) : null;
+    const label = mins !== null ? `Overdue ${mins}m` : "Overdue";
+    return { state: "unhandled", label, cls: "pill pill--danger", overdue: true };
+  }
+
+  if (hasFirstAction) return { state: "in_progress", label: "In progress", cls: "pill pill--warn", overdue: false };
+  return { state: "unhandled", label: "Unhandled", cls: "pill pill--muted", overdue: false };
 }
 
-function getSlaDotClass(ev) {
+function computeResponseMinutes(ev) {
+  // Truth: response time = first_action_at - createdAt (minutes only, min 1m).
+  // Prefer server-provided responseSeconds; fall back to computing from timestamps.
+  const createdMs = getCreatedAtMs(ev);
+  const fa = ev?.first_action_at ? String(ev.first_action_at).trim() : "";
+  const firstActionMs = fa ? parseIsoMs(fa) : null;
+
+  let seconds = null;
   const rs = computeResponseSeconds(ev);
-  const state = getLeadState(ev);
-  if (typeof rs === "number") {
-    if (rs <= 5 * 60) return "sla-dot sla-dot--green";
-    if (rs <= 30 * 60) return "sla-dot sla-dot--yellow";
-    return "sla-dot sla-dot--red";
+  if (typeof rs === "number" && Number.isFinite(rs)) seconds = rs;
+  else if (Number.isFinite(createdMs) && Number.isFinite(firstActionMs)) {
+    seconds = Math.max(0, Math.floor((firstActionMs - createdMs) / 1000));
   }
-  if (state?.state === "overdue") return "sla-dot sla-dot--red";
-  return "sla-dot";
+
+  if (seconds === null) return null;
+  const mins = Math.floor(seconds / 60);
+  return Math.max(1, mins);
+}
+
+function buildSlaCell(ev) {
+  const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
+  const isOverdue = !hasFirstAction && !!ev?.overdue;
+  const responseMin = computeResponseMinutes(ev);
+
+  if (!hasFirstAction) {
+    if (isOverdue) return `<span class="sla sla--overdue">SLA: Overdue</span>`;
+    return `<span class="sla sla--none">Response: —</span>`;
+  }
+
+  return `<span class="sla sla--ok">Response: ${escapeHtml(String(responseMin ?? 1))}m</span>`;
+}
+
+function buildOwnerCell(ev) {
+  const current = ev?.owner ? String(ev.owner) : "";
+  const opts = Array.isArray(ownerOptions) && ownerOptions.length ? ownerOptions : DEFAULT_OWNER_OPTIONS;
+
+  const normalized = opts
+    .map((s) => String(s || "").trim())
+    .filter(Boolean);
+
+  const unique = Array.from(new Set(normalized));
+  const hasCurrentInList = current && unique.includes(current);
+  const all = hasCurrentInList || !current ? unique : [current, ...unique];
+
+  const optionsHtml = [
+    `<option value="">${escapeHtml("Owner…")}</option>`,
+    ...all.map((name) => {
+      const selected = name === current ? "selected" : "";
+      return `<option value="${escapeHtml(name)}" ${selected}>${escapeHtml(name)}</option>`;
+    }),
+  ].join("");
+
+  return `<select class="owner-select js-owner-select" aria-label="Owner">${optionsHtml}</select>`;
 }
 
 function showOverlay(overlayId) {
@@ -623,7 +688,7 @@ function renderRows(events) {
     const hasAny = Array.isArray(eventsCache) && eventsCache.length > 0;
     const onlyDemo = hasAny && eventsCache.every((e) => e?.source === "simulator");
     const msg = onlyDemo ? `No customer events yet.` : `No events yet.`;
-    tbody.innerHTML = `<tr><td colspan="9" class="muted">${escapeHtml(msg)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="muted">${escapeHtml(msg)}</td></tr>`;
     if (cards) {
       cards.innerHTML = `<div class="muted" style="padding:10px 2px;">${escapeHtml(msg)}</div>`;
     }
@@ -640,10 +705,19 @@ function renderRows(events) {
           : typeof ev?.callDurationSec === "number"
             ? ev.callDurationSec
             : null;
-      const isMissedCall =
-        String(ev?.source || "") === "twilio" &&
-        String(ev?.type_label || "").toLowerCase().includes("(missed)");
-      const callLenText = isMissedCall ? "—" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+
+      const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
+      const isInboundCall = String(ev?.source || "") === "twilio";
+      const isMissedInbound =
+        isInboundCall &&
+        (String(ev?.status || "") === "missed" ||
+          String(typeLabel).toLowerCase().includes("(missed)"));
+
+      const callLenText = isMissedInbound
+        ? "Missed"
+        : typeof callLenSec === "number"
+          ? formatDuration(callLenSec)
+          : "—";
 
       // Show captured details for form leads (stored in note)
       const detailsHtml =
@@ -672,15 +746,9 @@ function renderRows(events) {
         </select>
       `;
 
-      const respondedSeconds = computeRespondedSeconds(ev);
-      const respondedHtml =
-        typeof respondedSeconds === "number"
-          ? `<div class="result-meta muted">Responded in ${escapeHtml(formatDuration(respondedSeconds))}</div>`
-          : "";
-
       const state = getLeadState(ev);
-      const slaDotClass = getSlaDotClass(ev);
-      const owner = ev?.owner ? String(ev.owner) : "";
+      const slaHtml = buildSlaCell(ev);
+      const ownerHtml = buildOwnerCell(ev);
       const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
       const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
         const selected = o.value === nextStepValue ? "selected" : "";
@@ -688,34 +756,31 @@ function renderRows(events) {
       }).join("");
       const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
 
-      const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
-      const isMissed = String(ev?.status || "") === "missed" || String(typeLabel).toLowerCase().includes("missed");
-      const missedPill = isMissed ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
+      const missedPill = isMissedInbound
+        ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>`
+        : "";
       return `
-        <tr data-id="${escapeHtml(ev.id)}" class="${isMissed ? "row--missed" : ""}">
+        <tr data-id="${escapeHtml(ev.id)}" class="${isMissedInbound ? "row--missed" : ""}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
             ${detailsHtml}
           </td>
-          <td><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span></td>
-          <td style="text-align:center;"><span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span></td>
+          <td class="open-cell"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span></td>
+          <td class="sla-cell">${slaHtml}</td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
               ${escapeHtml(typeLabel)}${missedPill}
             </span>
           </td>
-          <td style="white-space:nowrap;">
-            ${owner ? `<span style="font-weight:900;">${escapeHtml(owner)}</span>` : `<a href="#" class="mini-link js-set-owner">Set</a>`}
-          </td>
+          <td style="white-space:nowrap;">${ownerHtml}</td>
           <td style="overflow:visible;">
             ${nextStepSelect}
           </td>
           <td style="overflow:visible;">
             ${resultDisplay}
             ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
-            ${respondedHtml}
           </td>
           <td class="actions-td" style="overflow:visible;">
             <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">
@@ -744,10 +809,13 @@ function renderRows(events) {
             : typeof ev?.callDurationSec === "number"
               ? ev.callDurationSec
               : null;
-        const isMissedCall =
-          String(ev?.source || "") === "twilio" &&
-          String(ev?.type_label || "").toLowerCase().includes("(missed)");
-        const callLenText = isMissedCall ? "—" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+        const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
+        const isInboundCall = String(ev?.source || "") === "twilio";
+        const isMissedInbound =
+          isInboundCall &&
+          (String(ev?.status || "") === "missed" ||
+            String(typeLabel).toLowerCase().includes("(missed)"));
+        const callLenText = isMissedInbound ? "Missed" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
 
         const isFormLead = ev?.source === "landing_form";
         const detailsText = isFormLead && ev.note ? String(ev.note) : "";
@@ -764,7 +832,7 @@ function renderRows(events) {
         }).join("");
 
         const state = getLeadState(ev);
-        const slaDotClass = getSlaDotClass(ev);
+        const slaHtml = buildSlaCell(ev);
         const owner = ev?.owner ? String(ev.owner) : "";
         const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
 
@@ -775,9 +843,7 @@ function renderRows(events) {
           ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
         `;
 
-        const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
-        const isMissed = String(ev?.status || "") === "missed" || String(typeLabel).toLowerCase().includes("missed");
-        const missedPill = isMissed ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
+        const missedPill = isMissedInbound ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
 
         const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
           const selected = o.value === nextStepValue ? "selected" : "";
@@ -785,7 +851,7 @@ function renderRows(events) {
         }).join("");
         const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
         return `
-          <div class="dashboard-card ${isMissed ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
+          <div class="dashboard-card ${isMissedInbound ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
             <div class="dashboard-card__top">
               <div class="dashboard-card__meta">
                 <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
@@ -795,7 +861,7 @@ function renderRows(events) {
               </div>
               <div class="dashboard-card__badges">
                 <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
-                <span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span>
+                ${slaHtml}
                 <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(typeLabel)}${missedPill}</span>
               </div>
             </div>
@@ -892,6 +958,15 @@ async function main() {
   console.log("🔧 Dashboard JS loaded");
   console.log("🔧 #rows element:", $("#rows"));
   
+  // Load operator config (e.g., owner dropdown options). If it fails, we fall back gracefully.
+  try {
+    const cfg = await fetchDashboardConfig();
+    ownerOptions = Array.isArray(cfg?.ownerOptions) ? cfg.ownerOptions : [];
+  } catch (e) {
+    ownerOptions = null;
+    // Keep quiet; dashboard remains usable with prompt-based owner assignment.
+  }
+
   // Keep simulator link keyed
   // Simulator link removed from UI (demo-only tooling).
 
@@ -1046,6 +1121,27 @@ async function main() {
       showToast("Next step saved", "ok");
     } catch (err) {
       showToast(err.message || "Failed to set next step", "bad");
+    }
+  });
+
+  // Owner dropdown changes
+  eventsRoot?.addEventListener("change", async (e) => {
+    const sel = e.target?.closest?.(".js-owner-select");
+    if (!sel) return;
+    const rowEl = sel.closest("[data-id]");
+    const id = rowEl?.dataset?.id;
+    if (!id) return;
+    const value = (sel.value || "").trim();
+    pauseAutoRefresh(2500);
+    try {
+      const resp = await apiSetOwner({ eventId: id, owner: value ? value : null });
+      if (resp?.event) upsertEvent(resp.event);
+      const filtered = applyDemoFilter(eventsCache);
+      renderRows(filtered);
+      setSummary(filtered);
+      showToast("Owner saved", "ok");
+    } catch (err) {
+      showToast(err.message || "Failed to set owner", "bad");
     }
   });
 
