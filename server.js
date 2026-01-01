@@ -1961,51 +1961,13 @@ app.get("/api/email_logs", requireDemoAuth, (req, res) => {
   );
 });
 
-// API: send booking confirmation (manual)
-app.post("/api/send_booking_confirmation", requireDemoAuth, async (req, res) => {
-  const eventId = Number(req.body?.event_id);
-  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
-
-  const row = getCallEventById(eventId);
-  if (!row) return res.status(404).json({ error: "Not found" });
-  if (String(row.outcome || "") !== "booked") {
-    return res.status(400).json({ error: "Not booked", message: "Lead must be Booked to send booking confirmation." });
-  }
-
-  const toEmail = normalizeEmail(row.customer_email);
-  if (!toEmail) {
-    return res.status(400).json({ error: "Missing customer_email", message: "customer_email is required for booking confirmation." });
-  }
-
-  const apptDate = clampStr(req.body?.appointment_date, 60) || null;
-  const apptWindow = clampStr(req.body?.appointment_window, 80) || null;
-  db.prepare(
-    "UPDATE CallEvent SET appointment_date = COALESCE(?, appointment_date), appointment_window = COALESCE(?, appointment_window) WHERE id = ?"
-  ).run(apptDate, apptWindow, eventId);
-
-  const tpl = customerBookingConfirmation({
-    companyName: COMPANY_NAME,
-    companyPhone: COMPANY_PHONE,
-    appointmentDate: apptDate || row.appointment_date,
-    appointmentWindow: apptWindow || row.appointment_window,
+// API: booking confirmation email intentionally disabled (feature removed from UI).
+app.post("/api/send_booking_confirmation", requireDemoAuth, async (_req, res) => {
+  return res.status(410).json({
+    ok: false,
+    error: "Disabled",
+    message: "Booking confirmation email has been removed.",
   });
-
-  const result = await sendAndLogEmail({
-    req,
-    eventId,
-    emailType: "customer_booking_confirmation",
-    toEmail,
-    subject: tpl.subject,
-    html: tpl.html,
-  });
-
-  if (result.ok) {
-    db.prepare(
-      "UPDATE CallEvent SET customer_booking_email_sent_at = COALESCE(customer_booking_email_sent_at, ?) WHERE id = ?"
-    ).run(Date.now(), eventId);
-  }
-
-  return res.json({ ok: result.ok, event: rowToJson(getCallEventWithFollowupCountById(eventId)), receipt: result });
 });
 
 // API: test email (logs receipt)

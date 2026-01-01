@@ -441,30 +441,7 @@ async function apiGetEmailLogs(eventId) {
   return json;
 }
 
-async function apiSendBookingConfirmation({ eventId, appointmentDate, appointmentWindow }) {
-  const key = getKey();
-  const res = await fetch(withKey("/api/send_booking_confirmation"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(key ? { "x-demo-key": key } : {}),
-    },
-    body: JSON.stringify({
-      event_id: Number(eventId),
-      appointment_date: appointmentDate || null,
-      appointment_window: appointmentWindow || null,
-    }),
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { message: text || "Unexpected response" };
-  }
-  if (!res.ok) throw new Error(json.message || "Failed to send booking confirmation");
-  return json;
-}
+// Booking confirmation email intentionally removed.
 
 function exportVisibleRowsToCsv() {
   const visible = applyDemoFilter(eventsCache);
@@ -666,17 +643,20 @@ async function openTimelineModal(eventId) {
     title.textContent = ev?.callerNumber ? `Timeline — ${ev.callerNumber}` : "Lead timeline";
   }
 
-  // Reset booking panel
-  const bookingStatus = document.getElementById("bookingStatus");
-  if (bookingStatus) bookingStatus.textContent = "";
-  const apptDate = document.getElementById("apptDate");
-  const apptWindow = document.getElementById("apptWindow");
-  if (apptDate) apptDate.value = ev?.appointment_date ? String(ev.appointment_date) : "";
-  if (apptWindow) apptWindow.value = ev?.appointment_window ? String(ev.appointment_window) : "";
-
   showOverlay("timelineOverlay");
 
-  const itemsEl = document.getElementById("timelineItems");
+  // Evidence pane (robust against cached/stale HTML or DOM drift)
+  let itemsEl = document.getElementById("timelineItems");
+  if (!itemsEl) {
+    const col = document.querySelector("#timelineOverlay .timeline-col .section-label")?.parentElement || null;
+    if (col) {
+      const div = document.createElement("div");
+      div.id = "timelineItems";
+      div.className = "timeline";
+      col.appendChild(div);
+      itemsEl = div;
+    }
+  }
   if (itemsEl) itemsEl.innerHTML = `<div class="muted">Loading…</div>`;
 
   try {
@@ -740,38 +720,7 @@ async function openTimelineModal(eventId) {
       );
     }
 
-    if (itemsEl) itemsEl.innerHTML = parts.join("");
-
-    // Enable/disable booking email UI based on requirements
-    const sendBtn = document.getElementById("sendBookingBtn");
-    const canSendBooking = ev?.outcome === "booked" && !!String(ev?.customer_email || "").trim();
-    if (sendBtn) sendBtn.disabled = !canSendBooking;
-
-    // Booking status + retry affordance on failure
-    const bookingLogs = (Array.isArray(emailLogs) ? emailLogs : [])
-      .filter((x) => x && x.email_type === "customer_booking_confirmation")
-      .slice()
-      .sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
-    const lastBooking = bookingLogs.length ? bookingLogs[bookingLogs.length - 1] : null;
-    const lastFailed = lastBooking && String(lastBooking.status || "").toLowerCase() === "failed";
-    if (sendBtn) {
-      sendBtn.textContent = lastFailed ? "Retry booking confirmation email" : "Send booking confirmation email";
-    }
-
-    if (bookingStatus) {
-      if (!canSendBooking) {
-        bookingStatus.textContent =
-          ev?.outcome !== "booked"
-            ? "Set Result to Booked to enable booking email."
-            : "Customer email is missing (form email is optional).";
-      } else if (lastFailed) {
-        bookingStatus.textContent = `Last send FAILED: ${lastBooking?.error_text || "Unknown error"}`;
-      } else if (lastBooking && String(lastBooking.status || "").toLowerCase() === "sent") {
-        bookingStatus.textContent = `Last sent: ${fmtEpoch(lastBooking.created_at)}${lastBooking.provider_message_id ? ` (receipt ${String(lastBooking.provider_message_id).slice(0, 10)}…)` : ""}`;
-      } else {
-        bookingStatus.textContent = "";
-      }
-    }
+    if (itemsEl) itemsEl.innerHTML = parts.join("") || `<div class="muted">No timeline entries yet.</div>`;
   } catch (e) {
     if (itemsEl) itemsEl.innerHTML = `<div class="muted">Failed to load timeline: ${escapeHtml(e?.message || "Unknown error")}</div>`;
   }
@@ -1112,35 +1061,7 @@ async function main() {
     closeTimelineModal();
     openFollowupModal(timelineEventId);
   });
-  document.getElementById("sendBookingBtn")?.addEventListener("click", async () => {
-    if (!timelineEventId) return;
-    const statusEl = document.getElementById("bookingStatus");
-    const btn = document.getElementById("sendBookingBtn");
-    const apptDate = document.getElementById("apptDate")?.value || "";
-    const apptWindow = document.getElementById("apptWindow")?.value || "";
-    if (btn) btn.disabled = true;
-    if (statusEl) statusEl.textContent = "Sending…";
-    pauseAutoRefresh(4000);
-    try {
-      const resp = await apiSendBookingConfirmation({
-        eventId: timelineEventId,
-        appointmentDate: apptDate.trim(),
-        appointmentWindow: apptWindow.trim(),
-      });
-      if (resp?.event) upsertEvent(resp.event);
-      if (statusEl) {
-        statusEl.textContent = resp?.ok ? "Sent (receipt stored in timeline)" : "Failed (see timeline)";
-      }
-      await loadCalls({ silent: true, force: true });
-      await openTimelineModal(timelineEventId);
-      showToast(resp?.ok ? "Booking email sent" : "Booking email failed", resp?.ok ? "ok" : "bad");
-    } catch (e) {
-      if (statusEl) statusEl.textContent = e?.message || "Failed to send";
-      showToast(e.message || "Failed to send booking email", "bad");
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  });
+  // Booking confirmation email intentionally removed.
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
