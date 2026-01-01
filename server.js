@@ -139,6 +139,7 @@ function ensureLeadTruthLedgerSchema(db) {
   // NOTE: store timestamps as ISO TEXT where possible (SQLite is flexible about types).
   addColumnIfMissing(db, "CallEvent", "owner", "TEXT");
   addColumnIfMissing(db, "CallEvent", "first_action_at", "TEXT");
+  addColumnIfMissing(db, "CallEvent", "next_step", "TEXT");
   addColumnIfMissing(db, "CallEvent", "handled_at", "TEXT");
   addColumnIfMissing(db, "CallEvent", "outcome_set_at", "TEXT");
   addColumnIfMissing(db, "CallEvent", "overdue_sent_count", "INTEGER NOT NULL DEFAULT 0");
@@ -518,6 +519,7 @@ function rowToJson(row) {
     assignedTo: row.assignedTo ?? null,
     owner: row.owner ?? null,
     first_action_at: firstActionIso || null,
+    next_step: row.next_step ? String(row.next_step) : null,
     handled_at: row.handled_at ? String(row.handled_at) : null,
     outcome_set_at: row.outcome_set_at ? String(row.outcome_set_at) : null,
     overdue_sent_count:
@@ -1917,6 +1919,51 @@ app.post("/api/owner", requireDemoAuth, (req, res) => {
     `.trim()
     )
     .run(owner, shouldSetFirstAction ? 1 : 0, nowIso, eventId);
+  if (result.changes === 0) return res.status(404).json({ error: "Not found" });
+  return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });
+});
+
+function isValidNextStep(v) {
+  const s = String(v || "").trim();
+  // Keep this aligned with the dropdown in dashboard.js.
+  return (
+    s === "call_attempt" ||
+    s === "voicemail_left" ||
+    s === "text_sent" ||
+    s === "spoke_to_customer" ||
+    s === "note"
+  );
+}
+
+// API: set next step (operator workflow)
+app.post("/api/next_step", requireDemoAuth, (req, res) => {
+  const eventId = Number(req.body?.event_id);
+  if (!Number.isFinite(eventId)) return res.status(400).json({ error: "Invalid event_id" });
+  const raw = req.body?.next_step;
+  const nextStep = raw === null ? null : clampStr(raw, 40) || null;
+  if (nextStep !== null && !isValidNextStep(nextStep)) {
+    return res.status(400).json({
+      error: "Invalid next_step",
+      message: "next_step must be one of: call_attempt, voicemail_left, text_sent, spoke_to_customer, note",
+    });
+  }
+
+  const nowIso = new Date().toISOString();
+  const shouldSetFirstAction = !!(nextStep && String(nextStep).trim());
+  const result = db
+    .prepare(
+      `
+      UPDATE CallEvent
+      SET next_step = ?,
+          first_action_at = CASE
+            WHEN first_action_at IS NULL AND ? = 1 THEN ?
+            ELSE first_action_at
+          END
+      WHERE id = ?
+    `.trim()
+    )
+    .run(nextStep, shouldSetFirstAction ? 1 : 0, nowIso, eventId);
+
   if (result.changes === 0) return res.status(404).json({ error: "Not found" });
   return res.json({ ok: true, event: rowToJson(getCallEventWithFollowupCountById(eventId)) });
 });

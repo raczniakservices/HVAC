@@ -157,6 +157,15 @@ const OUTCOME_OPTIONS = [
   { value: "call_back_later", label: "Call back later", displayLabel: "⏰ Call back", color: "#f59e0b" },
 ];
 
+const NEXT_STEP_OPTIONS = [
+  { value: "", label: "Set next step…" },
+  { value: "call_attempt", label: "Call attempt" },
+  { value: "voicemail_left", label: "Leave voicemail" },
+  { value: "text_sent", label: "Send text" },
+  { value: "spoke_to_customer", label: "Spoke to customer" },
+  { value: "note", label: "Note" },
+];
+
 let autoRefreshIntervalId = null;
 let resumeTimerId = null;
 let inFlight = false;
@@ -388,6 +397,27 @@ async function apiSetOwner({ eventId, owner }) {
     json = { message: text || "Unexpected response" };
   }
   if (!res.ok) throw new Error(json.message || "Failed to set owner");
+  return json;
+}
+
+async function apiSetNextStep({ eventId, nextStep }) {
+  const key = getKey();
+  const res = await fetch(withKey("/api/next_step"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(key ? { "x-demo-key": key } : {}),
+    },
+    body: JSON.stringify({ event_id: Number(eventId), next_step: nextStep }),
+  });
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { message: text || "Unexpected response" };
+  }
+  if (!res.ok) throw new Error(json.message || "Failed to set next step");
   return json;
 }
 
@@ -650,12 +680,19 @@ function renderRows(events) {
 
       const state = getLeadState(ev);
       const slaDotClass = getSlaDotClass(ev);
-      const followupCount = Number(ev?.followup_count || 0);
       const owner = ev?.owner ? String(ev.owner) : "";
+      const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
+      const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
+        const selected = o.value === nextStepValue ? "selected" : "";
+        return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
+      }).join("");
+      const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
 
       const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
+      const isMissed = String(ev?.status || "") === "missed" || String(typeLabel).toLowerCase().includes("missed");
+      const missedPill = isMissed ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
       return `
-        <tr data-id="${escapeHtml(ev.id)}">
+        <tr data-id="${escapeHtml(ev.id)}" class="${isMissed ? "row--missed" : ""}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
@@ -666,14 +703,14 @@ function renderRows(events) {
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
             <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
-              ${escapeHtml(typeLabel)}
+              ${escapeHtml(typeLabel)}${missedPill}
             </span>
           </td>
           <td style="white-space:nowrap;">
-            <span style="font-weight:900;">${escapeHtml(String(followupCount))}</span>
-          </td>
-          <td style="white-space:nowrap;">
             ${owner ? `<span style="font-weight:900;">${escapeHtml(owner)}</span>` : `<a href="#" class="mini-link js-set-owner">Set</a>`}
+          </td>
+          <td style="overflow:visible;">
+            ${nextStepSelect}
           </td>
           <td style="overflow:visible;">
             ${resultDisplay}
@@ -728,8 +765,8 @@ function renderRows(events) {
 
         const state = getLeadState(ev);
         const slaDotClass = getSlaDotClass(ev);
-        const followupCount = Number(ev?.followup_count || 0);
         const owner = ev?.owner ? String(ev.owner) : "";
+        const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
 
         const outcomeControlsHtml = `
           <select class="outcome-select js-outcome" aria-label="Set Result">
@@ -739,8 +776,16 @@ function renderRows(events) {
         `;
 
         const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
+        const isMissed = String(ev?.status || "") === "missed" || String(typeLabel).toLowerCase().includes("missed");
+        const missedPill = isMissed ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
+
+        const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
+          const selected = o.value === nextStepValue ? "selected" : "";
+          return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
+        }).join("");
+        const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
         return `
-          <div class="dashboard-card" data-id="${escapeHtml(ev.id)}">
+          <div class="dashboard-card ${isMissed ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
             <div class="dashboard-card__top">
               <div class="dashboard-card__meta">
                 <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
@@ -751,7 +796,7 @@ function renderRows(events) {
               <div class="dashboard-card__badges">
                 <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
                 <span class="${escapeHtml(slaDotClass)}" title="SLA indicator"></span>
-                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(typeLabel)}</span>
+                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(typeLabel)}${missedPill}</span>
               </div>
             </div>
 
@@ -761,8 +806,8 @@ function renderRows(events) {
                 <div class="dashboard-kv__value">${escapeHtml(callLenText)}</div>
               </div>
               <div class="dashboard-kv">
-                <div class="dashboard-kv__label">Follow-ups</div>
-                <div class="dashboard-kv__value">${escapeHtml(String(followupCount))}</div>
+                <div class="dashboard-kv__label">Next step</div>
+                <div class="dashboard-kv__value">${nextStepSelect}</div>
               </div>
               <div class="dashboard-kv">
                 <div class="dashboard-kv__label">Result</div>
@@ -980,6 +1025,27 @@ async function main() {
       } finally {
         deleteBtn.disabled = false;
       }
+    }
+  });
+
+  // Next step dropdown changes
+  eventsRoot?.addEventListener("change", async (e) => {
+    const sel = e.target?.closest?.(".js-next-step");
+    if (!sel) return;
+    const rowEl = sel.closest("[data-id]");
+    const id = rowEl?.dataset?.id;
+    if (!id) return;
+    const value = sel.value || "";
+    pauseAutoRefresh(2500);
+    try {
+      const resp = await apiSetNextStep({ eventId: id, nextStep: value ? value : null });
+      if (resp?.event) upsertEvent(resp.event);
+      const filtered = applyDemoFilter(eventsCache);
+      renderRows(filtered);
+      setSummary(filtered);
+      showToast("Next step saved", "ok");
+    } catch (err) {
+      showToast(err.message || "Failed to set next step", "bad");
     }
   });
 
