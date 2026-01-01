@@ -2024,7 +2024,7 @@ app.post("/api/result", requireDemoAuth, (req, res) => {
       UPDATE CallEvent
       SET outcome = ?,
           outcomeAt = ?,
-          outcome_set_at = ?,
+          outcome_set_at = COALESCE(outcome_set_at, ?),
           handled_at = ?,
           first_action_at = COALESCE(first_action_at, ?)
       WHERE id = ?

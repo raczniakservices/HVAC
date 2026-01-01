@@ -179,6 +179,28 @@ let isInteracting = false;
 const editingOutcomeIds = new Set();
 let ownerOptions = null;
 const DEFAULT_OWNER_OPTIONS = ["Cody", "Sam", "Alex"];
+const expandedDetailsIds = new Set();
+const editingNextStepIds = new Set();
+
+function getCallerDetailsText(ev) {
+  // Keep the main grid compact. Details are accessible via an expandable sub-row.
+  if (String(ev?.source || "") !== "landing_form") return "";
+  return ev?.note ? String(ev.note) : "";
+}
+
+function nextStepLabel(value) {
+  const v = String(value || "").trim();
+  const opt = NEXT_STEP_OPTIONS.find((o) => o.value === v);
+  return opt ? opt.label : v || "—";
+}
+
+function formatOutcomeResponse(ev) {
+  const ms = computeOutcomeResponseMs(ev);
+  if (!Number.isFinite(ms)) return null;
+  if (ms < 60_000) return "<1m";
+  const mins = Math.floor(ms / 60_000);
+  return `${mins}m`;
+}
 
 // Follow-up UI intentionally removed.
 let followupModalEventId = null;
@@ -203,10 +225,20 @@ function computeResponseSeconds(ev) {
   return null;
 }
 
-function computeRespondedSeconds(ev) {
-  const rs = computeResponseSeconds(ev);
-  if (typeof rs === "number" && Number.isFinite(rs)) return rs;
-  return null;
+function computeOutcomeResponseMs(ev) {
+  // Response time (truth ledger) = time-to-outcome (outcome_set_at - createdAt).
+  // Only meaningful when outcome exists.
+  const hasOutcome = !!(ev?.outcome && String(ev.outcome).trim());
+  if (!hasOutcome) return null;
+  const createdMs = getCreatedAtMs(ev);
+  const outcomeIso = ev?.outcome_set_at
+    ? String(ev.outcome_set_at).trim()
+    : ev?.outcomeAt
+      ? String(ev.outcomeAt).trim()
+      : "";
+  const outcomeMs = outcomeIso ? parseIsoMs(outcomeIso) : null;
+  if (!Number.isFinite(createdMs) || !Number.isFinite(outcomeMs)) return null;
+  return Math.max(0, Number(outcomeMs) - Number(createdMs));
 }
 
 function getCallLengthSeconds(ev) {
@@ -582,36 +614,15 @@ function getLeadState(ev) {
   return { state: "unhandled", label: "Unhandled", cls: "pill pill--muted", overdue: false };
 }
 
-function computeResponseMinutes(ev) {
-  // Truth: response time = first_action_at - createdAt (minutes only, min 1m).
-  // Prefer server-provided responseSeconds; fall back to computing from timestamps.
-  const createdMs = getCreatedAtMs(ev);
-  const fa = ev?.first_action_at ? String(ev.first_action_at).trim() : "";
-  const firstActionMs = fa ? parseIsoMs(fa) : null;
-
-  let seconds = null;
-  const rs = computeResponseSeconds(ev);
-  if (typeof rs === "number" && Number.isFinite(rs)) seconds = rs;
-  else if (Number.isFinite(createdMs) && Number.isFinite(firstActionMs)) {
-    seconds = Math.max(0, Math.floor((firstActionMs - createdMs) / 1000));
-  }
-
-  if (seconds === null) return null;
-  const mins = Math.floor(seconds / 60);
-  return Math.max(1, mins);
-}
-
 function buildSlaCell(ev) {
   const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
   const isOverdue = !hasFirstAction && !!ev?.overdue;
-  const responseMin = computeResponseMinutes(ev);
-
   if (!hasFirstAction) {
     if (isOverdue) return `<span class="sla sla--overdue">SLA: Overdue</span>`;
-    return `<span class="sla sla--none">Response: —</span>`;
+    return `<span class="sla sla--none">SLA: —</span>`;
   }
-
-  return `<span class="sla sla--ok">Response: ${escapeHtml(String(responseMin ?? 1))}m</span>`;
+  // SLA is time-to-first-action. Once first action exists, we don't show "success green".
+  return `<span class="sla sla--met">SLA: Met</span>`;
 }
 
 function buildOwnerCell(ev) {
@@ -719,11 +730,12 @@ function renderRows(events) {
           ? formatDuration(callLenSec)
           : "—";
 
-      // Show captured details for form leads (stored in note)
-      const detailsHtml =
-        ev.source === "landing_form" && ev.note
-          ? `<div class="caller-cell__details muted">${escapeHtml(ev.note)}</div>`
-          : "";
+      const detailsText = getCallerDetailsText(ev);
+      const hasDetails = !!detailsText;
+      const isExpanded = expandedDetailsIds.has(String(ev.id));
+      const detailsToggle = hasDetails
+        ? `<button type="button" class="details-toggle js-toggle-details" aria-expanded="${isExpanded ? "true" : "false"}" aria-label="Toggle details">${isExpanded ? "Hide" : "View"}</button>`
+        : "";
 
       const currentOutcome = ev.outcome ? String(ev.outcome) : "";
       const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === currentOutcome) || OUTCOME_OPTIONS[0];
@@ -754,33 +766,54 @@ function renderRows(events) {
         const selected = o.value === nextStepValue ? "selected" : "";
         return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
       }).join("");
-      const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
+      const isEditingNextStep = editingNextStepIds.has(String(ev.id));
+      const nextStepControl = (() => {
+        if (nextStepValue && !isEditingNextStep) {
+          return `
+            <span class="next-step-pill">${escapeHtml(nextStepLabel(nextStepValue))}</span>
+            <a href="#" class="mini-link js-edit-next-step" aria-label="Edit next step">Edit</a>
+            <span class="saved-tick" aria-hidden="true" hidden>✓</span>
+          `;
+        }
+        return `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select><span class="saved-tick" aria-hidden="true" hidden>✓</span>`;
+      })();
 
       const missedPill = isMissedInbound
         ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>`
         : "";
-      return `
-        <tr data-id="${escapeHtml(ev.id)}" class="${isMissedInbound ? "row--missed" : ""}">
+      const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
+      const typeSub = isMissedInbound ? `<div class="type-sub muted">Missed call</div>` : "";
+      const typeHtml = `
+        <div class="type-main" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+          ${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}${missedPill}
+        </div>
+        ${typeSub}
+      `;
+
+      const responseLabel = currentOutcome ? formatOutcomeResponse(ev) : null;
+      const responseMeta = responseLabel ? `<div class="result-meta muted">Response: ${escapeHtml(responseLabel)}</div>` : "";
+
+      const mainRow = `
+        <tr data-id="${escapeHtml(ev.id)}" class="${missedActionable ? "row--missed" : ""}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
-            ${detailsHtml}
+            <div class="caller-cell__meta muted">${detailsToggle}</div>
           </td>
           <td class="open-cell"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span></td>
           <td class="sla-cell">${slaHtml}</td>
           <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
           <td>
-            <span style="display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap;">
-              ${escapeHtml(typeLabel)}${missedPill}
-            </span>
+            <div class="type-cell">${typeHtml}</div>
           </td>
           <td style="white-space:nowrap;">${ownerHtml}</td>
-          <td style="overflow:visible;">
-            ${nextStepSelect}
+          <td class="next-step-cell" style="overflow:hidden;">
+            ${nextStepControl}
           </td>
           <td style="overflow:visible;">
             ${resultDisplay}
             ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
+            ${responseMeta}
           </td>
           <td class="actions-td" style="overflow:visible;">
             <button class="icon-btn icon-btn--danger js-delete" type="button" title="Delete" aria-label="Delete">
@@ -793,6 +826,21 @@ function renderRows(events) {
           </td>
         </tr>
       `;
+
+      const detailsRow = hasDetails
+        ? `
+          <tr class="details-row ${isExpanded ? "" : "details-row--hidden"}" data-details-for="${escapeHtml(ev.id)}">
+            <td colspan="10">
+              <div class="details-panel">
+                <div class="details-panel__title">Details</div>
+                <div class="details-panel__body">${escapeHtml(detailsText)}</div>
+              </div>
+            </td>
+          </tr>
+        `
+        : "";
+
+      return mainRow + detailsRow;
     })
     .join("");
 
@@ -1007,6 +1055,28 @@ async function main() {
   const eventsRoot = $("#eventsRoot") || $("#rows");
 
   eventsRoot?.addEventListener("click", async (e) => {
+    const toggleBtn = e.target.closest(".js-toggle-details");
+    if (toggleBtn) {
+      const rowEl = toggleBtn.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+      if (expandedDetailsIds.has(String(id))) expandedDetailsIds.delete(String(id));
+      else expandedDetailsIds.add(String(id));
+      renderRows(applyDemoFilter(eventsCache));
+      return;
+    }
+
+    const editNextStep = e.target.closest(".js-edit-next-step");
+    if (editNextStep) {
+      e.preventDefault();
+      const rowEl = editNextStep.closest("[data-id]");
+      const id = rowEl?.dataset?.id;
+      if (!id) return;
+      editingNextStepIds.add(String(id));
+      renderRows(applyDemoFilter(eventsCache));
+      return;
+    }
+
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
       const rowEl = editOutcomeBtn.closest("[data-id]");
@@ -1111,6 +1181,13 @@ async function main() {
     const id = rowEl?.dataset?.id;
     if (!id) return;
     const value = sel.value || "";
+    const prev = getEventById(id)?.next_step ? String(getEventById(id).next_step) : "";
+
+    // Optimistic update: immediately reflect change and collapse into pill UI.
+    upsertEvent({ id, next_step: value ? value : null });
+    editingNextStepIds.delete(String(id));
+    renderRows(applyDemoFilter(eventsCache));
+
     pauseAutoRefresh(2500);
     try {
       const resp = await apiSetNextStep({ eventId: id, nextStep: value ? value : null });
@@ -1118,9 +1195,21 @@ async function main() {
       const filtered = applyDemoFilter(eventsCache);
       renderRows(filtered);
       setSummary(filtered);
-      showToast("Next step saved", "ok");
+      // Subtle "Saved" tick (no toast spam)
+      const tr = document.querySelector(`[data-id="${CSS.escape(String(id))}"]`);
+      const tick = tr ? tr.querySelector(".saved-tick") : null;
+      if (tick) {
+        tick.hidden = false;
+        setTimeout(() => {
+          tick.hidden = true;
+        }, 700);
+      }
     } catch (err) {
-      showToast(err.message || "Failed to set next step", "bad");
+      // Revert UI
+      upsertEvent({ id, next_step: prev ? prev : null });
+      editingNextStepIds.add(String(id));
+      renderRows(applyDemoFilter(eventsCache));
+      showToast(err.message || "Failed to save next step", "bad");
     }
   });
 
