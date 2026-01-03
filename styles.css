@@ -436,7 +436,7 @@ button:active,a.btn:active{transform:translateY(0)}
   display:block;
   object-fit:contain;
   /* Prevent ultra-wide logos from stealing header space */
-  max-width:180px;
+  max-width:240px;
   /* Many client logos ship with extra transparent padding; scale slightly for a tighter fit */
   transform:scale(var(--brand-mark-scale, 1.10));
   transform-origin:left center;
@@ -485,17 +485,18 @@ button:active,a.btn:active{transform:translateY(0)}
    Landing masthead (landing only — keeps dashboard topbar normal size)
 ====================================================== */
 .landing-page .topbar__inner{
-  height:64px;
+  height:72px;
   padding:6px 0;
 }
 /* Keep the logo size stable even if header height changes. */
-.landing-page{ --brand-mark-height: 44px; --brand-mark-scale: 1.12; }
+.landing-page{ --brand-mark-height: 54px; --brand-mark-scale: 1.18; }
 .landing-page .brand{ align-items:center; }
 @media (max-width: 720px){
-  .landing-page .topbar__inner{height:56px; padding:4px 0;}
+  .landing-page .topbar__inner{height:64px; padding:4px 0;}
   .landing-page .brand{gap:12px}
   /* Mobile: logo-only header, so make the mark a bit larger */
-  .landing-page{ --brand-mark-height: 38px; --brand-mark-scale: 1.14; }
+  .landing-page{ --brand-mark-height: 46px; --brand-mark-scale: 1.22; }
+  .landing-page .brand__mark{ max-width:180px; }
   .landing-page .brand__name{display:none}
   .landing-page .call-cta{ padding:0 14px; gap:8px; }
 }
