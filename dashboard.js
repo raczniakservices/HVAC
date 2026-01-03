@@ -619,11 +619,11 @@ function getLeadState(ev) {
 
 function buildStatusCell(ev) {
   const state = getLeadState(ev);
-  const overdueBadge =
+  const overdueSub =
     state.state === "unhandled" && state.overdue
-      ? `<span class="status-overdue-badge" aria-label="Overdue">Overdue</span>`
+      ? `<div class="status-sub status-sub--overdue">Overdue</div>`
       : "";
-  return `<span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}${overdueBadge}</span>`;
+  return `<div class="status-stack"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>${overdueSub}</div>`;
 }
 
 function buildOwnerCell(ev) {
@@ -744,18 +744,48 @@ function renderRows(events) {
         return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.displayLabel)}</option>`;
       }).join("");
 
-      // Always show dropdown, but style the select based on current value
-      let selectClass = "outcome-select js-outcome";
-      if (currentOutcome === "booked") selectClass += " outcome-select--success";
-      else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") selectClass += " outcome-select--danger";
-      else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") selectClass += " outcome-select--warning";
-      else if (currentOutcome === "no_answer") selectClass += " outcome-select--muted";
+      // Result UI: show a clean badge when set, and only show the dropdown when editing.
+      const isEditingOutcome = editingOutcomeIds.has(String(ev.id));
+      const hasOutcome = !!(currentOutcome && String(currentOutcome).trim());
 
-      const resultDisplay = `
-        <select class="${selectClass}" aria-label="Set Result">
-          ${outcomeOptionsHtml}
-        </select>
-      `;
+      const outcomeBadgeClass = (() => {
+        if (!hasOutcome) return "result-badge result-badge--muted";
+        if (currentOutcome === "booked") return "result-badge result-badge--success";
+        if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") return "result-badge result-badge--danger";
+        if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") return "result-badge result-badge--warning";
+        if (currentOutcome === "no_answer") return "result-badge result-badge--muted";
+        return "result-badge";
+      })();
+
+      const selectClass = (() => {
+        let cls = "outcome-select js-outcome";
+        if (currentOutcome === "booked") cls += " outcome-select--success";
+        else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") cls += " outcome-select--danger";
+        else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") cls += " outcome-select--warning";
+        else if (currentOutcome === "no_answer") cls += " outcome-select--muted";
+        return cls;
+      })();
+
+      const resultControl = (() => {
+        // No outcome yet: keep it calm (button) until user clicks to set.
+        if (!hasOutcome && !isEditingOutcome) {
+          return `<button type="button" class="${escapeHtml(outcomeBadgeClass)} js-edit-outcome" aria-label="Set result">Set result…</button>`;
+        }
+
+        if (isEditingOutcome) {
+          return `
+            <div class="result-edit">
+              <select class="${escapeHtml(selectClass)}" aria-label="Set Result">
+                ${outcomeOptionsHtml}
+              </select>
+              <a href="#" class="mini-link js-cancel-outcome" aria-label="Cancel result editing">Cancel</a>
+            </div>
+          `;
+        }
+
+        // Outcome set (non-editing): show a clickable badge.
+        return `<button type="button" class="${escapeHtml(outcomeBadgeClass)} js-edit-outcome" aria-label="Edit result">${escapeHtml(outcomeOption.label || "Result")}</button>`;
+      })();
 
       const statusHtml = buildStatusCell(ev);
       const ownerHtml = buildOwnerCell(ev);
@@ -808,7 +838,7 @@ function renderRows(events) {
             ${nextStepControl}
           </td>
           <td style="overflow:visible;">
-            ${resultDisplay}
+            ${resultControl}
             ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
             ${responseMeta}
           </td>
@@ -884,7 +914,7 @@ function renderRows(events) {
           ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
         `;
 
-        const missedPill = isMissedInbound ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
+        const missedPill = missedActionable ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
 
         const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
           const selected = o.value === nextStepValue ? "selected" : "";
@@ -1085,6 +1115,7 @@ async function main() {
 
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
+      e.preventDefault();
       const rowEl = editOutcomeBtn.closest("[data-id]");
       const id = rowEl?.dataset?.id;
       if (!id) return;
@@ -1096,6 +1127,7 @@ async function main() {
 
     const cancelOutcomeBtn = e.target.closest(".js-cancel-outcome");
     if (cancelOutcomeBtn) {
+      e.preventDefault();
       const rowEl = cancelOutcomeBtn.closest("[data-id]");
       const id = rowEl?.dataset?.id;
       if (!id) return;
