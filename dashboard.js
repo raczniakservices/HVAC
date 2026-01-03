@@ -619,11 +619,11 @@ function getLeadState(ev) {
 
 function buildStatusCell(ev) {
   const state = getLeadState(ev);
-  const overdueSub =
+  const overdueBadge =
     state.state === "unhandled" && state.overdue
-      ? `<div class="status-sub status-sub--overdue">Overdue</div>`
+      ? `<span class="overdue-badge" aria-label="Overdue">Overdue</span>`
       : "";
-  return `<div class="status-stack"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>${overdueSub}</div>`;
+  return `<div class="status-inline"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>${overdueBadge}</div>`;
 }
 
 function buildOwnerCell(ev) {
@@ -769,7 +769,7 @@ function renderRows(events) {
       const resultControl = (() => {
         // No outcome yet: keep it calm (button) until user clicks to set.
         if (!hasOutcome && !isEditingOutcome) {
-          return `<button type="button" class="${escapeHtml(outcomeBadgeClass)} js-edit-outcome" aria-label="Set result">Set result…</button>`;
+          return `<button type="button" class="result-badge result-badge--warning js-edit-outcome" aria-label="Set result">Set result</button>`;
         }
 
         if (isEditingOutcome) {
@@ -839,7 +839,6 @@ function renderRows(events) {
           </td>
           <td style="overflow:visible;">
             ${resultControl}
-            ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
             ${responseMeta}
           </td>
           <td class="actions-td" style="overflow:visible;">
@@ -911,7 +910,6 @@ function renderRows(events) {
           <select class="outcome-select js-outcome" aria-label="Set Result">
             ${outcomeOptionsHtml}
           </select>
-          ${currentOutcome ? "" : `<div class="result-meta"><span class="pill pill--warn">Needs outcome</span></div>`}
         `;
 
         const missedPill = missedActionable ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";

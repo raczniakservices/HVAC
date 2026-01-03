@@ -2040,13 +2040,13 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 /* Dashboard table column sizing (9 columns) */
 .dashboard-page .table thead th:nth-child(1) { width: 80px; }  /* Time */
-.dashboard-page .table thead th:nth-child(2) { width: 200px; } /* Caller */
-.dashboard-page .table thead th:nth-child(3) { width: 160px; } /* Status */
+.dashboard-page .table thead th:nth-child(2) { width: 210px; } /* Caller */
+.dashboard-page .table thead th:nth-child(3) { width: 150px; } /* Status */
 .dashboard-page .table thead th:nth-child(4) { width: 85px; }  /* Call length */
 .dashboard-page .table thead th:nth-child(5) { width: 140px; } /* Type */
-.dashboard-page .table thead th:nth-child(6) { width: 105px; } /* Owner */
-.dashboard-page .table thead th:nth-child(7) { width: 135px; } /* Next step */
-.dashboard-page .table thead th:nth-child(8) { width: 235px; } /* Result */
+.dashboard-page .table thead th:nth-child(6) { width: 115px; } /* Owner */
+.dashboard-page .table thead th:nth-child(7) { width: 155px; } /* Next step */
+.dashboard-page .table thead th:nth-child(8) { width: 255px; } /* Result */
 .dashboard-page .table thead th:nth-child(9) { width: 60px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
@@ -2109,22 +2109,24 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .dashboard-page .status-cell{
   white-space:nowrap;
 }
-.status-stack{
+.status-inline{
   display:flex;
-  flex-direction:column;
+  flex-direction:row;
   align-items:flex-start;
   gap:4px;
 }
-.status-sub{
+.overdue-badge{
+  display:inline-flex;
+  align-items:center;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(220,38,38,.22);
+  background:rgba(220,38,38,.08);
+  color:#991b1b;
   font-size:11px;
   font-weight:900;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  line-height:1.1;
-}
-.status-sub--overdue{
-  color:#991b1b;
-  opacity:.92;
+  line-height:1;
+  letter-spacing:.02em;
 }
 
 .result-edit{
@@ -2508,9 +2510,9 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   display:inline-flex;
   align-items:center;
   gap:6px;
-  padding:7px 12px;
+  padding:6px 10px;
   border-radius:999px;
-  font-size:13px;
+  font-size:12.5px;
   font-weight:800;
   white-space:nowrap;
   border:1px solid var(--line);
@@ -2518,6 +2520,15 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   color:var(--muted);
   cursor:pointer;
   transition:transform .15s var(--ease), border-color .15s var(--ease), background-color .15s var(--ease);
+}
+.result-badge--warning{
+  border-color:rgba(245,158,11,.28);
+  background:rgba(245,158,11,.12);
+  color:#92400e;
+}
+.result-badge--warning:hover{
+  border-color:rgba(245,158,11,.38);
+  background:rgba(245,158,11,.16);
 }
 .result-badge:hover{
   transform:translateY(-1px);
