@@ -179,10 +179,9 @@ let isInteracting = false;
 const editingOutcomeIds = new Set();
 let ownerOptions = null;
 const DEFAULT_OWNER_OPTIONS = ["Cody", "Sam", "Alex"];
-const expandedDetailsIds = new Set();
 
 function getCallerDetailsText(ev) {
-  // Keep the main grid compact. Details are accessible via an expandable sub-row.
+  // Customer-friendly: show form details inline under the caller (no "View" button).
   if (String(ev?.source || "") !== "landing_form") return "";
   return ev?.note ? String(ev.note) : "";
 }
@@ -622,15 +621,11 @@ function buildStatusCell(ev) {
     typeof ev?.overdue_minutes === "number" && Number.isFinite(ev.overdue_minutes)
       ? Math.max(0, Math.floor(ev.overdue_minutes))
       : null;
-  const overdueBadge =
-    state.state === "unhandled" && state.overdue
-      ? `<span class="overdue-badge" aria-label="Overdue" title="${escapeHtml(
-          overdueMinutes === null ? "Overdue" : `Overdue: ${overdueMinutes}m`
-        )}">Overdue</span>`
-      : "";
-  return `<div class="status-stack"><span class="${escapeHtml(state.cls)}">${escapeHtml(
-    state.label
-  )}</span>${overdueBadge}</div>`;
+  const isOverdue = state.state === "unhandled" && state.overdue;
+  const label = isOverdue ? `${state.label} • Overdue` : state.label;
+  const title = isOverdue ? (overdueMinutes === null ? "Overdue" : `Overdue: ${overdueMinutes}m`) : "";
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+  return `<span class="${escapeHtml(state.cls)}"${titleAttr}>${escapeHtml(label)}</span>`;
 }
 
 function buildOwnerCell(ev) {
@@ -736,15 +731,13 @@ function renderRows(events) {
 
       const callLenHtml = (() => {
         if (isMissedInbound) {
-          const badgeClass = isClosed
-            ? "call-length-badge call-length-badge--missed-handled"
-            : "call-length-badge call-length-badge--missed";
-          const meta = isClosed
-            ? `<div class="call-length-meta muted">Handled</div>`
-            : hasFirstAction
-              ? `<div class="call-length-meta muted">Follow-up started</div>`
-              : `<div class="call-length-meta call-length-meta--danger">Needs callback</div>`;
-          return `<div class="call-length-stack"><span class="${badgeClass}">Missed</span>${meta}</div>`;
+          if (isClosed) {
+            return `<span class="call-length-badge call-length-badge--missed-handled">Missed • handled</span>`;
+          }
+          const meta = hasFirstAction
+            ? `<div class="call-length-meta muted">Follow-up started</div>`
+            : `<div class="call-length-meta call-length-meta--danger">Needs callback</div>`;
+          return `<div class="call-length-stack"><span class="call-length-badge call-length-badge--missed">Missed</span>${meta}</div>`;
         }
         if (typeof callLenSec === "number") {
           return `<span class="call-length-mono">${escapeHtml(formatDuration(callLenSec))}</span>`;
@@ -753,10 +746,8 @@ function renderRows(events) {
       })();
 
       const detailsText = getCallerDetailsText(ev);
-      const hasDetails = !!detailsText;
-      const isExpanded = expandedDetailsIds.has(String(ev.id));
-      const detailsToggle = hasDetails
-        ? `<button type="button" class="details-toggle js-toggle-details" aria-expanded="${isExpanded ? "true" : "false"}" aria-label="Toggle details">${isExpanded ? "Hide" : "View"}</button>`
+      const detailsInline = detailsText
+        ? `<div class="caller-cell__details muted">${escapeHtml(detailsText)}</div>`
         : "";
 
       const currentOutcome = ev.outcome ? String(ev.outcome) : "";
@@ -792,7 +783,7 @@ function renderRows(events) {
       const resultControl = (() => {
         // No outcome yet: keep it calm (button) until user clicks to set.
         if (!hasOutcome && !isEditingOutcome) {
-          return `<button type="button" class="result-badge result-badge--warning js-edit-outcome" aria-label="Set result">Set result</button>`;
+          return `<button type="button" class="result-badge result-badge--warning result-badge--select js-edit-outcome" aria-label="Set result">Set result</button>`;
         }
 
         if (isEditingOutcome) {
@@ -819,9 +810,7 @@ function renderRows(events) {
       }).join("");
       const nextStepControl = (() => {
         if (isClosed) {
-          return `<span class="field-readonly muted">${escapeHtml(
-            nextStepValue ? nextStepLabel(nextStepValue) : "—"
-          )}</span>`;
+          return `<span class="field-readonly field-readonly--dash">—</span>`;
         }
         const emptyClass = nextStepValue ? "" : " next-step-select--empty";
         const hint = nextStepValue
@@ -856,7 +845,7 @@ function renderRows(events) {
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
-            <div class="caller-cell__meta muted">${detailsToggle}</div>
+            ${detailsInline}
           </td>
           <td class="status-cell">${statusHtml}</td>
           <td class="call-length-cell">${callLenHtml}</td>
@@ -882,21 +871,7 @@ function renderRows(events) {
           </td>
         </tr>
       `;
-
-      const detailsRow = hasDetails
-        ? `
-          <tr class="details-row ${isExpanded ? "" : "details-row--hidden"}" data-details-for="${escapeHtml(ev.id)}">
-            <td colspan="9">
-              <div class="details-panel">
-                <div class="details-panel__title">Details</div>
-                <div class="details-panel__body">${escapeHtml(detailsText)}</div>
-              </div>
-            </td>
-          </tr>
-        `
-        : "";
-
-      return mainRow + detailsRow;
+      return mainRow;
     })
     .join("");
 
@@ -1182,17 +1157,6 @@ async function main() {
   const eventsRoot = $("#eventsRoot") || $("#rows");
 
   eventsRoot?.addEventListener("click", async (e) => {
-    const toggleBtn = e.target.closest(".js-toggle-details");
-    if (toggleBtn) {
-      const rowEl = toggleBtn.closest("[data-id]");
-      const id = rowEl?.dataset?.id;
-      if (!id) return;
-      if (expandedDetailsIds.has(String(id))) expandedDetailsIds.delete(String(id));
-      else expandedDetailsIds.add(String(id));
-      renderRows(applyDemoFilter(eventsCache));
-      return;
-    }
-
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
       e.preventDefault();

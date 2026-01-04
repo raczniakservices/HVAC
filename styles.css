@@ -2042,13 +2042,13 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 /* Dashboard table column sizing (9 columns) */
 .dashboard-page .table thead th:nth-child(1) { width: 80px; }  /* Time */
-.dashboard-page .table thead th:nth-child(2) { width: 210px; } /* Caller */
-.dashboard-page .table thead th:nth-child(3) { width: 150px; } /* Status */
-.dashboard-page .table thead th:nth-child(4) { width: 105px; }  /* Call */
-.dashboard-page .table thead th:nth-child(5) { width: 140px; } /* Type */
-.dashboard-page .table thead th:nth-child(6) { width: 115px; } /* Owner */
+.dashboard-page .table thead th:nth-child(2) { width: 190px; } /* Caller */
+.dashboard-page .table thead th:nth-child(3) { width: 140px; } /* Status */
+.dashboard-page .table thead th:nth-child(4) { width: 95px; }  /* Call */
+.dashboard-page .table thead th:nth-child(5) { width: 120px; } /* Type */
+.dashboard-page .table thead th:nth-child(6) { width: 100px; } /* Owner */
 .dashboard-page .table thead th:nth-child(7) { width: 155px; } /* Next step */
-.dashboard-page .table thead th:nth-child(8) { width: 255px; } /* Result */
+.dashboard-page .table thead th:nth-child(8) { width: 230px; } /* Result */
 .dashboard-page .table thead th:nth-child(9) { width: 60px; }  /* Actions */
 .table tbody td{
   padding:10px 8px;
@@ -2234,6 +2234,16 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   gap:8px;
   align-items:center;
 }
+.caller-cell__details{
+  margin-top:6px;
+  font-size:11px;
+  line-height:1.25;
+  white-space:normal;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+}
 .details-toggle{
   appearance:none;
   border:1px solid rgba(15,23,42,.12);
@@ -2313,18 +2323,12 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   min-width:0;
 }
 .next-step-hint{
-  display:inline-flex;
-  align-items:center;
-  justify-content:flex-start;
   font-size:11px;
   font-weight:950;
   letter-spacing:.01em;
-  color:#92400e;
-  background:rgba(245,158,11,.10);
-  border:1px solid rgba(245,158,11,.22);
-  border-radius:10px;
-  padding:6px 10px;
+  color:#b45309;
   line-height:1.1;
+  padding-left:2px;
 }
 .next-step-select--empty{
   border-color:rgba(245,158,11,.32) !important;
@@ -2360,7 +2364,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .call-length-stack{
   display:flex;
   flex-direction:column;
-  align-items:flex-start;
+  align-items:center;
   gap:4px;
 }
 .call-length-badge{
@@ -2400,6 +2404,29 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   font-weight:800;
   font-size:12.5px;
   white-space:nowrap;
+}
+.field-readonly--dash{
+  height:38px;
+  padding:0 12px;
+  border-radius:12px;
+  border:1px solid rgba(15,23,42,.10);
+  background:rgba(248,250,252,.92);
+  color:rgba(15,23,42,.62);
+}
+
+/* Make "Set result" look like a dropdown trigger */
+.result-badge--select{
+  padding-right:28px;
+  position:relative;
+}
+.result-badge--select::after{
+  content:"▾";
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  font-weight:950;
+  color:rgba(15,23,42,.55);
 }
 
 /* If the viewport is tight, hide less-critical columns to keep everything on one screen */
