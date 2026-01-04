@@ -485,18 +485,19 @@ button:active,a.btn:active{transform:translateY(0)}
    Landing masthead (landing only — keeps dashboard topbar normal size)
 ====================================================== */
 .landing-page .topbar__inner{
-  height:72px;
-  padding:6px 0;
+  /* Keep header height steady; spend the space on the logo instead of padding */
+  height:64px;
+  padding:4px 0;
 }
 /* Keep the logo size stable even if header height changes. */
-.landing-page{ --brand-mark-height: 54px; --brand-mark-scale: 1.18; }
+.landing-page{ --brand-mark-height: 46px; --brand-mark-scale: 1.00; }
 .landing-page .brand{ align-items:center; }
 @media (max-width: 720px){
-  .landing-page .topbar__inner{height:64px; padding:4px 0;}
+  .landing-page .topbar__inner{height:56px; padding:2px 0;}
   .landing-page .brand{gap:12px}
   /* Mobile: logo-only header, so make the mark a bit larger */
-  .landing-page{ --brand-mark-height: 46px; --brand-mark-scale: 1.22; }
-  .landing-page .brand__mark{ max-width:180px; }
+  .landing-page{ --brand-mark-height: 42px; --brand-mark-scale: 1.02; }
+  .landing-page .brand__mark{ max-width:200px; }
   .landing-page .brand__name{display:none}
   .landing-page .call-cta{ padding:0 14px; gap:8px; }
 }
@@ -2043,7 +2044,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .dashboard-page .table thead th:nth-child(1) { width: 80px; }  /* Time */
 .dashboard-page .table thead th:nth-child(2) { width: 210px; } /* Caller */
 .dashboard-page .table thead th:nth-child(3) { width: 150px; } /* Status */
-.dashboard-page .table thead th:nth-child(4) { width: 85px; }  /* Call length */
+.dashboard-page .table thead th:nth-child(4) { width: 105px; }  /* Call */
 .dashboard-page .table thead th:nth-child(5) { width: 140px; } /* Type */
 .dashboard-page .table thead th:nth-child(6) { width: 115px; } /* Owner */
 .dashboard-page .table thead th:nth-child(7) { width: 155px; } /* Next step */
@@ -2096,11 +2097,32 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 
 /* Missed call visibility */
+/* Missed call visibility */
 .row--missed{
   background:linear-gradient(90deg, rgba(254,242,242,.75), rgba(255,255,255,.0) 52%);
 }
 .row--missed td:first-child{
   box-shadow: inset 4px 0 0 rgba(220,38,38,.85);
+}
+
+/* New, more specific missed states */
+.row--missed-open{
+  background:linear-gradient(90deg, rgba(254,242,242,.78), rgba(255,255,255,.0) 56%);
+}
+.row--missed-open td:first-child{
+  box-shadow: inset 4px 0 0 rgba(220,38,38,.90);
+}
+.row--missed-followedup{
+  background:linear-gradient(90deg, rgba(255,251,235,.72), rgba(255,255,255,.0) 56%);
+}
+.row--missed-followedup td:first-child{
+  box-shadow: inset 4px 0 0 rgba(245,158,11,.90);
+}
+.row--missed-handled{
+  background:linear-gradient(90deg, rgba(248,250,252,.92), rgba(255,255,255,.0) 56%);
+}
+.row--missed-handled td:first-child{
+  box-shadow: inset 4px 0 0 rgba(148,163,184,.95);
 }
 .table tbody td:nth-child(3){
   white-space:nowrap;
@@ -2113,8 +2135,14 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 .status-inline{
   display:flex;
   flex-direction:row;
+  align-items:center;
+  gap:6px;
+}
+.status-stack{
+  display:flex;
+  flex-direction:column;
   align-items:flex-start;
-  gap:4px;
+  gap:6px;
 }
 .overdue-badge{
   display:inline-flex;
@@ -2153,8 +2181,8 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 
 /* Tighten spacing between Result and Actions */
-.dashboard-page .table tbody td:nth-child(5){ padding-right:4px; }
-.dashboard-page .table tbody td:nth-child(6){ padding-left:4px; }
+.dashboard-page .table tbody td:nth-child(8){ padding-right:6px; }
+.dashboard-page .table tbody td:nth-child(9){ padding-left:6px; }
 
 /* Result meta line under dropdown (e.g., "Responded in 12m") */
 .dashboard-page .result-meta{
@@ -2273,32 +2301,105 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
 }
 .next-step-cell{
   display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:6px;
+}
+.next-step-stack{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:6px;
+  min-width:0;
+}
+.next-step-hint{
+  display:inline-flex;
   align-items:center;
-  gap:8px;
+  justify-content:flex-start;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.01em;
+  color:#92400e;
+  background:rgba(245,158,11,.10);
+  border:1px solid rgba(245,158,11,.22);
+  border-radius:10px;
+  padding:6px 10px;
+  line-height:1.1;
+}
+.next-step-select--empty{
+  border-color:rgba(245,158,11,.32) !important;
+  background:rgba(255,251,235,.92) !important;
 }
 .save-indicator{
   display:inline-flex;
   align-items:center;
-  justify-content:center;
-  padding:3px 8px;
-  border-radius:999px;
-  border:1px solid rgba(148,163,184,.26);
-  background:rgba(148,163,184,.10);
-  color:rgba(15,23,42,.78);
+  gap:6px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:rgba(15,23,42,.60);
   font-size:11px;
   font-weight:950;
   white-space:nowrap;
-  flex:0 0 auto;
 }
 .save-indicator[data-state="ok"]{
-  border-color:rgba(22,163,74,.28);
-  background:rgba(22,163,74,.10);
   color:#166534;
 }
 .save-indicator[data-state="bad"]{
-  border-color:rgba(220,38,38,.28);
+  color:#991b1b;
+}
+
+/* Call length: make missed unmistakable */
+.call-length-cell{ overflow:visible; }
+.call-length-mono{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.call-length-stack{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:4px;
+}
+.call-length-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(220,38,38,.24);
   background:rgba(220,38,38,.10);
   color:#991b1b;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.01em;
+  white-space:nowrap;
+  line-height:1;
+}
+.call-length-badge--missed-handled{
+  border-color:rgba(148,163,184,.28);
+  background:rgba(148,163,184,.10);
+  color:rgba(15,23,42,.76);
+}
+.call-length-meta{
+  font-size:11px;
+  font-weight:900;
+  line-height:1.1;
+  white-space:nowrap;
+}
+.call-length-meta--danger{
+  color:#991b1b;
+}
+
+/* Read-only field (used when a lead is closed) */
+.field-readonly{
+  display:inline-flex;
+  align-items:center;
+  font-weight:800;
+  font-size:12.5px;
+  white-space:nowrap;
 }
 
 /* If the viewport is tight, hide less-critical columns to keep everything on one screen */
@@ -2312,7 +2413,7 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   .dashboard-page .table thead th:nth-child(1) { width: 70px; }  /* Time */
   .dashboard-page .table thead th:nth-child(2) { width: 180px; } /* Caller */
   .dashboard-page .table thead th:nth-child(3) { width: 110px; } /* Status */
-  .dashboard-page .table thead th:nth-child(4) { width: 80px; }  /* Call length */
+  .dashboard-page .table thead th:nth-child(4) { width: 95px; }  /* Call */
   .dashboard-page .table thead th:nth-child(6) { width: 90px; }  /* Owner */
   .dashboard-page .table thead th:nth-child(7) { width: 120px; } /* Next step */
   .dashboard-page .table thead th:nth-child(8) { width: 180px; } /* Result */
@@ -2680,6 +2781,16 @@ input, select, textarea{transition:box-shadow 0.2s ease, border-color 0.2s ease}
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+.dashboard-kv__value--controls{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+}
+.dashboard-kv__value--rich{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
 }
 .dashboard-card__actions{
   margin-top:10px;

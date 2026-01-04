@@ -180,7 +180,6 @@ const editingOutcomeIds = new Set();
 let ownerOptions = null;
 const DEFAULT_OWNER_OPTIONS = ["Cody", "Sam", "Alex"];
 const expandedDetailsIds = new Set();
-const editingNextStepIds = new Set();
 
 function getCallerDetailsText(ev) {
   // Keep the main grid compact. Details are accessible via an expandable sub-row.
@@ -619,11 +618,19 @@ function getLeadState(ev) {
 
 function buildStatusCell(ev) {
   const state = getLeadState(ev);
+  const overdueMinutes =
+    typeof ev?.overdue_minutes === "number" && Number.isFinite(ev.overdue_minutes)
+      ? Math.max(0, Math.floor(ev.overdue_minutes))
+      : null;
   const overdueBadge =
     state.state === "unhandled" && state.overdue
-      ? `<span class="overdue-badge" aria-label="Overdue">Overdue</span>`
+      ? `<span class="overdue-badge" aria-label="Overdue" title="${escapeHtml(
+          overdueMinutes === null ? "Overdue" : `Overdue: ${overdueMinutes}m`
+        )}">Overdue</span>`
       : "";
-  return `<div class="status-inline"><span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>${overdueBadge}</div>`;
+  return `<div class="status-stack"><span class="${escapeHtml(state.cls)}">${escapeHtml(
+    state.label
+  )}</span>${overdueBadge}</div>`;
 }
 
 function buildOwnerCell(ev) {
@@ -723,11 +730,27 @@ function renderRows(events) {
       // Hard rule: MISSED only when inbound_call (twilio) AND call_status (status) === missed
       const isMissedInbound = isInboundCall && String(ev?.status || "") === "missed";
 
-      const callLenText = isMissedInbound
-        ? "Missed"
-        : typeof callLenSec === "number"
-          ? formatDuration(callLenSec)
-          : "—";
+      const leadState = getLeadState(ev);
+      const isClosed = leadState?.state === "closed";
+      const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
+
+      const callLenHtml = (() => {
+        if (isMissedInbound) {
+          const badgeClass = isClosed
+            ? "call-length-badge call-length-badge--missed-handled"
+            : "call-length-badge call-length-badge--missed";
+          const meta = isClosed
+            ? `<div class="call-length-meta muted">Handled</div>`
+            : hasFirstAction
+              ? `<div class="call-length-meta muted">Follow-up started</div>`
+              : `<div class="call-length-meta call-length-meta--danger">Needs callback</div>`;
+          return `<div class="call-length-stack"><span class="${badgeClass}">Missed</span>${meta}</div>`;
+        }
+        if (typeof callLenSec === "number") {
+          return `<span class="call-length-mono">${escapeHtml(formatDuration(callLenSec))}</span>`;
+        }
+        return "—";
+      })();
 
       const detailsText = getCallerDetailsText(ev);
       const hasDetails = !!detailsText;
@@ -794,42 +817,49 @@ function renderRows(events) {
         const selected = o.value === nextStepValue ? "selected" : "";
         return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
       }).join("");
-      const isEditingNextStep = editingNextStepIds.has(String(ev.id));
       const nextStepControl = (() => {
-        if (nextStepValue && !isEditingNextStep) {
-          return `
-            <span class="next-step-pill">${escapeHtml(nextStepLabel(nextStepValue))}</span>
-            <a href="#" class="mini-link js-edit-next-step" aria-label="Edit next step">Edit</a>
-            <span class="save-indicator" aria-live="polite" hidden></span>
-          `;
+        if (isClosed) {
+          return `<span class="field-readonly muted">${escapeHtml(
+            nextStepValue ? nextStepLabel(nextStepValue) : "—"
+          )}</span>`;
         }
-        return `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select><span class="save-indicator" aria-live="polite" hidden></span>`;
+        const emptyClass = nextStepValue ? "" : " next-step-select--empty";
+        const hint = nextStepValue
+          ? ""
+          : `<div class="next-step-hint" aria-label="Next step required">Next step required</div>`;
+        return `
+          <div class="next-step-stack">
+            <select class="next-step-select js-next-step${emptyClass}" aria-label="Next step">${nextStepOptionsHtml}</select>
+            ${hint}
+            <span class="save-indicator" aria-live="polite" hidden></span>
+          </div>
+        `;
       })();
 
-      const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
-      const missedPill = missedActionable
-        ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>`
-        : "";
-      const typeSub = missedActionable ? `<div class="type-sub muted">Missed call</div>` : "";
+      const rowClass = (() => {
+        if (!isMissedInbound) return "";
+        if (isClosed) return "row--missed-handled";
+        if (hasFirstAction) return "row--missed-followedup";
+        return "row--missed-open";
+      })();
       const typeHtml = `
         <div class="type-main" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:${sourceInfo.color}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-          ${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}${missedPill}
+          ${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}
         </div>
-        ${typeSub}
       `;
 
       const responseLabel = currentOutcome ? formatOutcomeResponse(ev) : null;
       const responseMeta = responseLabel ? `<div class="result-meta muted">Response: ${escapeHtml(responseLabel)}</div>` : "";
 
       const mainRow = `
-        <tr data-id="${escapeHtml(ev.id)}" class="${missedActionable ? "row--missed" : ""}">
+        <tr data-id="${escapeHtml(ev.id)}" class="${escapeHtml(rowClass)}">
           <td title="${escapeHtml(formatTimeFull(ev.createdAt))}">${escapeHtml(formatTime(ev.createdAt))}</td>
           <td class="caller-cell">
             <a class="caller-cell__num caller-link" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}">${escapeHtml(ev.callerNumber)}</a>
             <div class="caller-cell__meta muted">${detailsToggle}</div>
           </td>
           <td class="status-cell">${statusHtml}</td>
-          <td style="font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap;">${escapeHtml(callLenText)}</td>
+          <td class="call-length-cell">${callLenHtml}</td>
           <td>
             <div class="type-cell">${typeHtml}</div>
           </td>
@@ -886,11 +916,27 @@ function renderRows(events) {
         const typeLabel = ev?.type_label ? String(ev.type_label) : sourceInfo.label;
         const isInboundCall = String(ev?.source || "") === "twilio";
         const isMissedInbound = isInboundCall && String(ev?.status || "") === "missed";
-        const callLenText = isMissedInbound ? "Missed" : typeof callLenSec === "number" ? formatDuration(callLenSec) : "—";
+        const state = getLeadState(ev);
+        const isClosed = state?.state === "closed";
+        const hasFirstAction = !!(ev?.first_action_at && String(ev.first_action_at).trim());
+        const callLenDisplay = (() => {
+          if (isMissedInbound) {
+            const badgeClass = isClosed
+              ? "call-length-badge call-length-badge--missed-handled"
+              : "call-length-badge call-length-badge--missed";
+            const meta = isClosed
+              ? `<div class="call-length-meta muted">Handled</div>`
+              : hasFirstAction
+                ? `<div class="call-length-meta muted">Follow-up started</div>`
+                : `<div class="call-length-meta call-length-meta--danger">Needs callback</div>`;
+            return `<div class="call-length-stack"><span class="${badgeClass}">Missed</span>${meta}</div>`;
+          }
+          if (typeof callLenSec === "number") return escapeHtml(formatDuration(callLenSec));
+          return "—";
+        })();
 
         const isFormLead = ev?.source === "landing_form";
         const detailsText = isFormLead && ev.note ? String(ev.note) : "";
-        const state = getLeadState(ev);
         const statusLabel = state?.label || "";
 
         const currentOutcome = ev.outcome ? String(ev.outcome) : "";
@@ -902,25 +948,72 @@ function renderRows(events) {
           return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
         }).join("");
 
-        const missedActionable = isMissedInbound && !(currentOutcome && String(currentOutcome).trim());
         const owner = ev?.owner ? String(ev.owner) : "";
         const nextStepValue = ev?.next_step ? String(ev.next_step) : "";
 
-        const outcomeControlsHtml = `
-          <select class="outcome-select js-outcome" aria-label="Set Result">
-            ${outcomeOptionsHtml}
-          </select>
-        `;
+        const isEditingOutcome = editingOutcomeIds.has(String(ev.id));
+        const hasOutcome = !!(currentOutcome && String(currentOutcome).trim());
+        const outcomeBadgeClass = (() => {
+          if (!hasOutcome) return "result-badge result-badge--muted";
+          if (currentOutcome === "booked") return "result-badge result-badge--success";
+          if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") return "result-badge result-badge--danger";
+          if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") return "result-badge result-badge--warning";
+          if (currentOutcome === "no_answer") return "result-badge result-badge--muted";
+          return "result-badge";
+        })();
 
-        const missedPill = missedActionable ? `<span class="pill pill--danger pill--mini" style="margin-left:8px;">MISSED</span>` : "";
+        const selectClass = (() => {
+          let cls = "outcome-select js-outcome";
+          if (currentOutcome === "booked") cls += " outcome-select--success";
+          else if (currentOutcome === "already_hired" || currentOutcome === "wrong_number") cls += " outcome-select--danger";
+          else if (currentOutcome === "call_back_later" || currentOutcome === "reached_no_booking") cls += " outcome-select--warning";
+          else if (currentOutcome === "no_answer") cls += " outcome-select--muted";
+          return cls;
+        })();
+
+        const resultControl = (() => {
+          if (!hasOutcome && !isEditingOutcome) {
+            return `<button type="button" class="result-badge result-badge--warning js-edit-outcome" aria-label="Set result">Set result</button>`;
+          }
+          if (isEditingOutcome) {
+            return `
+              <div class="result-edit">
+                <select class="${escapeHtml(selectClass)}" aria-label="Set Result">
+                  ${outcomeOptionsHtml}
+                </select>
+                <a href="#" class="mini-link js-cancel-outcome" aria-label="Cancel result editing">Cancel</a>
+              </div>
+            `;
+          }
+          return `<button type="button" class="${escapeHtml(outcomeBadgeClass)} js-edit-outcome" aria-label="Edit result">${escapeHtml(outcomeOption.label || "Result")}</button>`;
+        })();
 
         const nextStepOptionsHtml = NEXT_STEP_OPTIONS.map((o) => {
           const selected = o.value === nextStepValue ? "selected" : "";
           return `<option value="${escapeHtml(o.value)}" ${selected}>${escapeHtml(o.label)}</option>`;
         }).join("");
-        const nextStepSelect = `<select class="next-step-select js-next-step" aria-label="Next step">${nextStepOptionsHtml}</select>`;
+        const nextStepSelect = (() => {
+          if (isClosed) return `<span class="field-readonly muted">${escapeHtml(nextStepValue ? nextStepLabel(nextStepValue) : "—")}</span>`;
+          const emptyClass = nextStepValue ? "" : " next-step-select--empty";
+          const hint = nextStepValue
+            ? ""
+            : `<div class="next-step-hint" aria-label="Next step required">Next step required</div>`;
+          return `
+            <div class="next-step-stack">
+              <select class="next-step-select js-next-step${emptyClass}" aria-label="Next step">${nextStepOptionsHtml}</select>
+              ${hint}
+            </div>
+          `;
+        })();
+
+        const rowClass = (() => {
+          if (!isMissedInbound) return "";
+          if (isClosed) return "row--missed-handled";
+          if (hasFirstAction) return "row--missed-followedup";
+          return "row--missed-open";
+        })();
         return `
-          <div class="dashboard-card ${missedActionable ? "row--missed" : ""}" data-id="${escapeHtml(ev.id)}">
+          <div class="dashboard-card ${escapeHtml(rowClass)}" data-id="${escapeHtml(ev.id)}">
             <div class="dashboard-card__top">
               <div class="dashboard-card__meta">
                 <div class="dashboard-card__time">${escapeHtml(formatTimeFull(ev.createdAt))}</div>
@@ -930,18 +1023,18 @@ function renderRows(events) {
               </div>
               <div class="dashboard-card__badges">
                 <span class="${escapeHtml(state.cls)}">${escapeHtml(state.label)}</span>
-                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}${missedPill}</span>
+                <span class="source-pill" style="color:${sourceInfo.color}; white-space:nowrap;">${escapeHtml(isInboundCall ? "Inbound call" : typeLabel)}</span>
               </div>
             </div>
 
             <div class="dashboard-card__grid">
               <div class="dashboard-kv">
-                <div class="dashboard-kv__label">Call length</div>
-                <div class="dashboard-kv__value">${escapeHtml(callLenText)}</div>
+                <div class="dashboard-kv__label">Call</div>
+                <div class="dashboard-kv__value dashboard-kv__value--rich">${callLenDisplay}</div>
               </div>
               <div class="dashboard-kv">
                 <div class="dashboard-kv__label">Next step</div>
-                <div class="dashboard-kv__value">${nextStepSelect}</div>
+                <div class="dashboard-kv__value dashboard-kv__value--controls">${nextStepSelect}</div>
               </div>
               <div class="dashboard-kv">
                 <div class="dashboard-kv__label">Result</div>
@@ -955,7 +1048,7 @@ function renderRows(events) {
 
             <div class="dashboard-card__actions">
               <div style="flex:1; min-width:0;">
-                ${outcomeControlsHtml}
+                ${resultControl}
               </div>
               <a class="action-btn action-btn--call" href="tel:${escapeHtml(String(ev.callerNumber || '').replaceAll(' ', ''))}" title="Call back" aria-label="Call back">Call</a>
               <button class="dashboard-card__delete js-delete" type="button" title="Delete" aria-label="Delete">🗑</button>
@@ -1100,17 +1193,6 @@ async function main() {
       return;
     }
 
-    const editNextStep = e.target.closest(".js-edit-next-step");
-    if (editNextStep) {
-      e.preventDefault();
-      const rowEl = editNextStep.closest("[data-id]");
-      const id = rowEl?.dataset?.id;
-      if (!id) return;
-      editingNextStepIds.add(String(id));
-      renderRows(applyDemoFilter(eventsCache));
-      return;
-    }
-
     const editOutcomeBtn = e.target.closest(".js-edit-outcome");
     if (editOutcomeBtn) {
       e.preventDefault();
@@ -1219,9 +1301,8 @@ async function main() {
     const value = sel.value || "";
     const prev = getEventById(id)?.next_step ? String(getEventById(id).next_step) : "";
 
-    // Optimistic update: immediately reflect change and collapse into pill UI.
+    // Optimistic update: immediately reflect change.
     upsertEvent({ id, next_step: value ? value : null });
-    editingNextStepIds.delete(String(id));
     renderRows(applyDemoFilter(eventsCache));
 
     pauseAutoRefresh(2500);
@@ -1236,7 +1317,6 @@ async function main() {
     } catch (err) {
       // Revert UI
       upsertEvent({ id, next_step: prev ? prev : null });
-      editingNextStepIds.add(String(id));
       renderRows(applyDemoFilter(eventsCache));
       showRowSaveIndicator(id, { ok: false, message: "Failed to save", ms: 1500 });
     }
